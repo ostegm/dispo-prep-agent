@@ -1,0 +1,63 @@
+[project]
+name = "report_maistro"
+version = "0.0.1"
+description = "Planning, research, and report generation."
+authors = [
+    { name = "Lance Martin" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9" 
+dependencies = [
+    "langgraph>=0.2.55",
+    "langchain-community>=0.3.9",
+    "langchain-openai>=0.3.3",
+    "langchain-anthropic>=0.3.3",
+    "langchain-google-genai>=2.0.9",
+    "chromadb>=0.4.22",
+    "openai>=1.12.0",
+    "pymupdf>=1.23.8",
+    "langchain-text-splitters>=0.0.1",
+    "pdf2image>=1.17.0",
+    "pillow>=10.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
+
+[build-system]
+requires = ["setuptools>=73.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["report_maistro"]
+
+[tool.setuptools.package-dir]
+"report_maistro" = "src/report_maistro"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.ruff]
+lint.select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "D",    # pydocstyle
+    "D401", # First line should be in imperative mood
+    "T201",
+    "UP",
+]
+lint.ignore = [
+    "UP006",
+    "UP007",
+    "UP035",
+    "D417",
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
