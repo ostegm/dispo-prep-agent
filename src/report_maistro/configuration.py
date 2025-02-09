@@ -32,9 +32,10 @@ class Configuration(BaseModel):
     writer_model: str = "claude-3-sonnet-20240229"
     
     # Planning configurations
-    max_sections: int = 5
+    max_sections: int = 3
     max_tokens_per_source: int = 1000
     deposition_organization: str = DEFAULT_DEPOSITION_STRUCTURE
+    default_num_queries_per_section: int = 1
     
     # Vector DB configurations
     chroma_persist_dir: str = Field(

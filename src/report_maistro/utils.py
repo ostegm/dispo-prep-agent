@@ -5,6 +5,8 @@ from chromadb.config import Settings
 import openai
 from openai import AsyncOpenAI
 from src.report_maistro.state import Section
+import json
+import re
 
 # Initialize Chroma client
 chroma_client = chromadb.Client(Settings(persist_directory="./chroma_db"))
@@ -126,3 +128,36 @@ async def vector_db_search_async(search_queries: Union[str, List[str]]) -> List[
     results = await asyncio.gather(*tasks)
     
     return results
+
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON from text that may contain markdown or other formatting."""
+    # First try direct JSON parsing
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    
+    # Try to find JSON between ```json markers
+    json_pattern = r"```json\s*(.*?)\s*```"
+    matches = re.findall(json_pattern, text, re.DOTALL)
+    
+    for match in matches:
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+    
+    # Try to find anything that looks like a JSON object
+    json_pattern = r"\{[\s\S]*\}"
+    matches = re.findall(json_pattern, text)
+    
+    for match in matches:
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+    
+    print("\nFailed to extract JSON from text. Response content:")
+    print(text)
+    print("\nPlease ensure the model returns a valid JSON object.")
+    raise ValueError("No valid JSON found in text")

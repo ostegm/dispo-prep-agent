@@ -1,3 +1,36 @@
+# JSON Schema definitions
+QUERY_SCHEMA = """{
+    "queries": [
+        {
+            "query": "string",  // A simple phrase or sentence describing what to find - no boolean operators
+            "rationale": "string",  // Why this query is useful
+            "expected_findings": "string"  // What kind of documents we expect to find
+        }
+    ]
+}"""
+
+SECTIONS_SCHEMA = """{
+    "sections": [
+        {
+            "name": "string - Name for this line of questioning",
+            "description": "string - Brief overview of what you want to establish",
+            "investigation": "boolean - Whether to search case documents for this topic",
+            "content": null
+        }
+    ]
+}"""
+
+# JSON formatting prompt
+JSON_FORMATTER_PROMPT = """You are a JSON formatting expert. Your task is to take the following content and format it as a valid JSON object.
+
+Required JSON structure:
+{schema_description}
+
+Content to format:
+{content}
+
+Return ONLY the JSON object, no other text or explanations. The response must be directly parseable by json.loads()."""
+
 # Prompt to generate a search query to help with planning the deposition
 deposition_planner_query_writer_instructions="""You are an expert trial attorney, helping to plan a deposition. 
 
@@ -40,6 +73,7 @@ Each topic should have these exact fields:
 - investigation: true/false indicating whether to search case documents for this topic
 - content: should be null for now
 
+IMPORTANT: You must generate no more than {max_sections} sections total.
 Some topics (like background questions) may not require document research because they are standard questions.
 
 The topic of the deposition is:
@@ -59,26 +93,26 @@ CRITICAL: You MUST return ONLY a valid JSON object. No other text, no markdown, 
 The response must be parseable by json.loads() without any preprocessing.
 
 Required JSON structure:
-{
+{{
     "queries": [
-        {
+        {{
             "query": "string",  // The actual search query
             "rationale": "string",  // Brief explanation of why this query is useful
             "expected_findings": "string"  // What kind of documents/information this query aims to find
-        }
+        }}
     ]
-}
+}}
 
 Example valid response:
-{
+{{
     "queries": [
-        {
+        {{
             "query": "\"product defect\" AND (\"design\" OR \"manufacturing\") AND \"safety test*\"",
             "rationale": "Find documents about product defects and related safety testing",
             "expected_findings": "Safety test reports, defect analyses, manufacturing records"
-        }
+        }}
     ]
-}
+}}
 
 Each query should:
 1. Use boolean operators (AND, OR, NOT) and parentheses for complex combinations
@@ -87,7 +121,6 @@ Each query should:
 4. Focus on technical and factual aspects relevant to the deposition topic
 
 Topic: {topic}
-Organization: {deposition_organization}
 
 Remember: Return ONLY the JSON object. No other text or formatting."""
 

@@ -15,9 +15,23 @@ from langchain_core.language_models.chat_models import BaseChatModel as ChatMode
 import re
 
 from src.report_maistro.state import ReportStateInput, ReportStateOutput, Sections, ReportState, SectionState, SectionOutputState, Queries, Section
-from src.report_maistro.prompts import deposition_planner_query_writer_instructions, deposition_planner_instructions, query_writer_instructions, topic_writer_instructions, final_topic_writer_instructions
+from src.report_maistro.prompts import (
+    deposition_planner_query_writer_instructions, 
+    deposition_planner_instructions, 
+    query_writer_instructions, 
+    topic_writer_instructions, 
+    final_topic_writer_instructions,
+    QUERY_SCHEMA,
+    SECTIONS_SCHEMA,
+    JSON_FORMATTER_PROMPT
+)
 from src.report_maistro.configuration import Configuration
-from src.report_maistro.utils import deduplicate_and_format_sources, format_sections, vector_db_search_async
+from src.report_maistro.utils import (
+    deduplicate_and_format_sources, 
+    format_sections, 
+    vector_db_search_async,
+    extract_json_from_text
+)
 
 # Initialize configuration and models
 config = Configuration()
@@ -35,87 +49,6 @@ json_formatter_model = ChatAnthropic(
     temperature=0
 )
 
-# Constants
-DEFAULT_NUM_QUERIES = 1
-
-# Schema definitions
-QUERY_SCHEMA = """{
-    "queries": [
-        {
-            "query": "string",  // A simple phrase or sentence describing what to find - no boolean operators
-            "rationale": "string",  // Why this query is useful
-            "expected_findings": "string"  // What kind of documents we expect to find
-        }
-    ]
-}"""
-
-SECTIONS_SCHEMA = """{
-    "sections": [
-        {
-            "name": "string - Name for this line of questioning",
-            "description": "string - Brief overview of what you want to establish",
-            "investigation": "boolean - Whether to search case documents for this topic",
-            "content": null
-        }
-    ]
-}"""
-
-# Update query writer instructions to focus on semantic search
-query_writer_instructions = """Generate {number_of_queries} search queries to find relevant documents about this topic.
-
-Your response must be a valid JSON object with this structure:
-{{
-    "queries": [
-        {{
-            "query": "string",  // A simple phrase or sentence describing what to find - no boolean operators
-            "rationale": "string",  // Why this query is useful
-            "expected_findings": "string"  // What kind of documents we expect to find
-        }}
-    ]
-}}
-
-Example good queries:
-- "Luther's experience with autonomous vehicles"
-- "sensor system maintenance records"
-- "accident investigation findings"
-
-Do NOT use boolean operators (AND, OR). Just use natural language phrases that capture the key concepts.
-
-Topic: {topic}"""
-
-def extract_json_from_text(text: str) -> dict:
-    """Extract JSON from text that may contain markdown or other formatting."""
-    # First try direct JSON parsing
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    
-    # Try to find JSON between ```json markers
-    json_pattern = r"```json\s*(.*?)\s*```"
-    matches = re.findall(json_pattern, text, re.DOTALL)
-    
-    for match in matches:
-        try:
-            return json.loads(match)
-        except json.JSONDecodeError:
-            continue
-    
-    # Try to find anything that looks like a JSON object
-    json_pattern = r"\{[\s\S]*\}"
-    matches = re.findall(json_pattern, text)
-    
-    for match in matches:
-        try:
-            return json.loads(match)
-        except json.JSONDecodeError:
-            continue
-    
-    print("\nFailed to extract JSON from text. Response content:")
-    print(text)
-    print("\nPlease ensure the model returns a valid JSON object.")
-    raise ValueError("No valid JSON found in text")
-
 # Nodes
 async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
     """Generate a focused plan for the deposition."""
@@ -127,7 +60,8 @@ async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
     messages = [
         HumanMessage(content=deposition_planner_instructions.format(
             topic=topic,
-            deposition_organization=config.deposition_organization
+            deposition_organization=config.deposition_organization,
+            max_sections=config.max_sections
         ))
     ]
     
@@ -143,7 +77,7 @@ async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
             messages = [
                 HumanMessage(content=query_writer_instructions.format(
                     topic=section["description"],
-                    number_of_queries=DEFAULT_NUM_QUERIES
+                    number_of_queries=config.default_num_queries_per_section
                 ))
             ]
             query_tasks.append(planner_model.ainvoke(messages))
@@ -196,18 +130,11 @@ async def format_as_json(content: str, schema_description: str) -> dict:
     except json.JSONDecodeError:
         pass
     
-    prompt = f"""You are a JSON formatting expert. Your task is to take the following content and format it as a valid JSON object.
-
-Required JSON structure:
-{schema_description}
-
-Content to format:
-{content}
-
-Return ONLY the JSON object, no other text or explanations. The response must be directly parseable by json.loads()."""
-
     messages = [
-        HumanMessage(content=prompt)
+        HumanMessage(content=JSON_FORMATTER_PROMPT.format(
+            schema_description=schema_description,
+            content=content
+        ))
     ]
     
     response = await json_formatter_model.ainvoke(messages)
@@ -236,7 +163,7 @@ async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
     messages = [
         HumanMessage(content=query_writer_instructions.format(
             topic=section["description"],
-            number_of_queries=DEFAULT_NUM_QUERIES
+            number_of_queries=config.default_num_queries_per_section
         ))
     ]
     
@@ -391,7 +318,7 @@ def initiate_section_writing(state: ReportState):
         for section in state["sections"]:
             if section["investigation"]:
                 sends.append(
-                    Send("build_section_with_web_research", {
+                    Send("build_section_with_vector_search", {
                         "section": section,
                         "sections": state["sections"]  # Pass full sections list
                     })
@@ -473,8 +400,8 @@ builder.add_node("compile_final_report", compile_final_report)
 # Add edges
 builder.add_edge(START, "generate_report_plan")
 builder.add_edge("generate_report_plan", "human_feedback")
-builder.add_conditional_edges("human_feedback", initiate_section_writing, ["build_section_with_web_research", "generate_report_plan"])
-builder.add_edge("build_section_with_web_research", "gather_completed_sections")
+builder.add_conditional_edges("human_feedback", initiate_section_writing, ["build_section_with_vector_search", "generate_report_plan"])
+builder.add_edge("build_section_with_vector_search", "gather_completed_sections")
 builder.add_conditional_edges("gather_completed_sections", initiate_final_section_writing, ["write_final_sections"])
 builder.add_edge("write_final_sections", "compile_final_report")
 builder.add_edge("compile_final_report", END)

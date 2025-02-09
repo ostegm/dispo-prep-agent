@@ -67,7 +67,7 @@ python -m tests.test_chroma_index
 
 1. Start the LangGraph server:
 ```bash
-uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
+uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev --host 0.0.0.0 --port 2024
 ```
 
 2. Access the interfaces:
