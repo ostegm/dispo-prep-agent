@@ -3,12 +3,12 @@
 import asyncio
 import httpx
 import json
+import uuid
 from pathlib import Path
 from typing import Dict, Any
-import uuid
+import time
 
 from report_maistro.configuration import Configuration
-from report_maistro.state import ReportStateInput
 
 LANGGRAPH_API_URL = "http://localhost:2024"
 
@@ -51,143 +51,127 @@ async def create_thread() -> str:
         response.raise_for_status()
         return response.json()["thread_id"]
 
-async def get_human_feedback(sections: list) -> tuple[bool, str]:
-    """Get human feedback on the deposition plan."""
-    print("\nPlease review the deposition plan above.")
+async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str, assistant_id: str, accept_plan: bool = True, feedback: str = None) -> None:
+    """Resume the workflow after human feedback.
+    
+    Args:
+        client: The httpx client to use for requests
+        thread_id: The ID of the thread to resume
+        assistant_id: The ID of the assistant to use
+        accept_plan: Whether to accept the plan (True) or request changes (False)
+        feedback: Optional feedback message if rejecting the plan
+    """
+    print(f"\n{'Accepting' if accept_plan else 'Rejecting'} plan{' with feedback' if feedback else ''}...")
+    try:
+        response = await client.post(
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs",
+            json={
+                "assistant_id": assistant_id,
+                "checkpoint": {
+                    "thread_id": thread_id,
+                },
+                "command": {
+                    "resume": {
+                        "input": {
+                            "accept_report_plan": accept_plan,
+                            "feedback_on_report_plan": feedback
+                        }
+                    },
+                    "update": None,
+                    "goto": None
+                }
+            }
+        )
+        response.raise_for_status()
+        print("Successfully resumed workflow")
+    except httpx.HTTPStatusError as e:
+        print(f"\nError resuming workflow: {e.response.status_code} {e.response.text}")
+        print(f"Request URL: {e.request.url}")
+        print(f"Request headers: {dict(e.request.headers)}")
+        print(f"Request body: {e.request.content.decode()}")
+        raise
+    except Exception as e:
+        print(f"\nUnexpected error resuming workflow: {e}")
+        raise
+
+async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant_id: str) -> Dict[str, Any]:
+    """Poll thread state until completion."""
     while True:
-        response = input("\nDo you want to proceed with this plan? (Y/N): ").strip().upper()
-        if response in ['Y', 'N']:
-            if response == 'Y':
-                return True, None
-            feedback = input("\nPlease provide feedback on what to change in the plan: ").strip()
-            return False, feedback
-        print("Invalid input. Please enter Y or N.")
+        response = await client.get(f"{LANGGRAPH_API_URL}/threads/{thread_id}/state")
+        data = response.json()
+        
+        # Get current values and status
+        values = data.get("values", {})
+        if values:
+            status = values.get("status", "unknown")
+            print(f"\nStatus: {status}")
+            
+            # Check if we have a final report
+            if values.get("final_report"):
+                return values
+                
+        # Show what nodes we're waiting on
+        next_nodes = data.get("next", [])
+        if next_nodes:
+            print(f"Waiting at: {next_nodes}")
+            
+            # If we're at human_feedback, automatically continue with acceptance
+            if "human_feedback" in next_nodes:
+                await resume_after_human_feedback(client, thread_id, assistant_id)
+            
+        await asyncio.sleep(2)
 
 async def test_deposition_workflow():
-    """Test the full deposition preparation workflow with a real case scenario using LangGraph server."""
+    """Run the deposition workflow and poll for results."""
     
     # Initialize configuration
     config = Configuration()
     
-    # Ensure we have case documents indexed
-    case_docs_dir = Path(__file__).parent.parent / "case_documents"
-    assert case_docs_dir.exists(), "case_documents directory not found"
-    assert any(case_docs_dir.glob("*.pdf")), "No PDF files found in case_documents directory"
+    # Topic for the deposition
+    deposition_topic = "Prepare for a deposition of the defendant Luther about the human factors and decisions that led to the crash, focusing on their state of mind, awareness of risks, and actions taken before and during the incident"
     
-    # Test case: Prepare for a deposition about semi-autonomous vehicle accident
-    deposition_topic = "Prepare for a deposition of the defendant's engineer about the semi-autonomous vehicle's sensor system failure that led to the accident"
-    
-    # Initialize the input state as a dictionary
+    # Create input state
     input_state = {
         "topic": deposition_topic,
         "feedback_on_report_plan": None,
         "accept_report_plan": True
     }
     
-    # Create config dict for the graph
-    config_dict = {"configurable": config.model_dump()}
+    # Get or create assistant
+    assistant_id = await get_or_create_assistant()
+    print(f"\nUsing assistant: {assistant_id}")
     
-    print("\nStarting deposition preparation workflow...")
-    print(f"Topic: {deposition_topic}")
+    # Create thread
+    thread_id = await create_thread()
+    print(f"\nCreated thread: {thread_id}")
     
-    try:
-        # Get or create an assistant
-        assistant_id = await get_or_create_assistant()
-        print(f"Using assistant: {assistant_id}")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
+        # Start the workflow
+        run_response = await client.post(
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs",
+            json={
+                "assistant_id": assistant_id,
+                "input": input_state,
+                "config": {"configurable": config.model_dump()}
+            }
+        )
+        run_response.raise_for_status()
+        print("\nStarted workflow, polling for results...")
         
-        # Create a thread
-        thread_id = await create_thread()
-        print(f"Created thread: {thread_id}")
-        
-        # Track if we need to regenerate the plan
-        regenerate_plan = True
-        current_sections = None
-        
-        while regenerate_plan:
-            # Create a run and stream the results
-            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-                response = await client.post(
-                    f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs/stream",
-                    json={
-                        "assistant_id": assistant_id,
-                        "input": input_state,
-                        "config": config_dict,
-                        "stream_mode": ["values", "events"]
-                    }
-                )
-                response.raise_for_status()
+        # Poll until completion
+        try:
+            final_result = await poll_thread_state(client, thread_id, assistant_id)
+            if final_result.get("final_report"):
+                print("\nFinal Report:")
+                print("=" * 80)
+                print(final_result["final_report"])
+                print("=" * 80)
+            else:
+                print("\nNo final report in results")
                 
-                # Process the server-sent events stream
-                final_output = None
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])  # Skip "data: " prefix
-                            
-                            # Store the last output as final
-                            if isinstance(data, dict):
-                                final_output = data
-                                if "sections" in data:
-                                    current_sections = data["sections"]
-                            
-                            # Process intermediate outputs
-                            process_output(data)
-                            
-                        except json.JSONDecodeError:
-                            continue
-                
-                # If we have sections, get human feedback
-                if current_sections:
-                    accept_plan, feedback = await get_human_feedback(current_sections)
-                    if accept_plan:
-                        regenerate_plan = False
-                    else:
-                        # Update input state with feedback
-                        input_state = {
-                            "topic": deposition_topic,
-                            "feedback_on_report_plan": feedback,
-                            "accept_report_plan": False
-                        }
-                        print("\nRegenerating plan with feedback...")
-                        continue
-                
-                # Process final output if we have one
-                if final_output and "final_report" in final_output:
-                    print("\nFinal Deposition Report:")
-                    print("=" * 80)
-                    print(final_output["final_report"])
-                    print("=" * 80)
-                            
-            print("\nDeposition preparation workflow completed successfully!")
-        
-    except Exception as e:
-        print(f"Error during workflow execution: {e}")
-        raise
-
-def process_output(output: Dict[str, Any]):
-    """Process and validate the graph output."""
-    if isinstance(output, str):
-        print(f"\nEvent: {output}")
-        return
-        
-    if "sections" in output:
-        print("\nDeposition Topics Generated:")
-        for section in output["sections"]:
-            print(f"\n- Topic: {section['name']}")
-            print(f"  Description: {section['description']}")
-            print(f"  Requires Investigation: {section['investigation']}")
-            if section.get('content'):
-                print(f"\n  Questions Preview: {section['content'][:200]}...")
-    
-    if "report_sections_from_research" in output:
-        print("\nCase Document Search Results:")
-        print(f"Found {len(output['report_sections_from_research'].split('Source'))-1} relevant document sections")
-    
-    if "final_report" in output:
-        print("\nFinal Deposition Outline:")
-        print("-" * 80)
-        print(output["final_report"])
-        print("-" * 80)
+        except Exception as e:
+            print(f"Error: {e}")
+            raise
 
 if __name__ == "__main__":
     asyncio.run(test_deposition_workflow()) 

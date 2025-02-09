@@ -53,6 +53,9 @@ json_formatter_model = ChatAnthropic(
 async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
     """Generate a focused plan for the deposition."""
     
+    # Update status
+    state["status"] = "generating_plan"
+    
     # Get topic from state
     topic = state["topic"]
     
@@ -111,6 +114,7 @@ async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
     # Update state with sections and research
     state["sections"] = sections["sections"]
     state["report_sections_from_research"] = source_str
+    state["status"] = "plan_generated"
     
     return state
 
@@ -147,15 +151,18 @@ async def format_as_json(content: str, schema_description: str) -> dict:
 
 async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
     """Generate search queries for each section that requires investigation."""
+    # Update status
+    state["status"] = "generating_queries"
+    
     # First ensure we have the section in our state
     if "section" not in state:
         print("Warning: No section in state")
-        return {"completed_sections": []}
+        return {"completed_sections": [], "status": "error"}
         
     section = state["section"]
     if not section:
         print("Warning: Section is None")
-        return {"completed_sections": []}
+        return {"completed_sections": [], "status": "error"}
 
     print(f"\nGenerating queries for section: {section['name']}")
     
@@ -168,8 +175,6 @@ async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
     ]
     
     response = await writer_model.ainvoke(messages)
-    print("Raw response content:")
-    print(response.content)
     
     try:
         # Parse queries
@@ -178,7 +183,7 @@ async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
         
         if not queries:
             print(f"Warning: No queries generated for section {section['name']}")
-            return {"completed_sections": []}
+            return {"completed_sections": [], "status": "error"}
             
         # Add section info to queries
         for query in queries:
@@ -199,7 +204,8 @@ async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
         return {
             "queries": queries,
             "source_str": source_str,
-            "section": section
+            "section": section,
+            "status": "queries_generated"
         }
         
     except Exception as e:
@@ -208,13 +214,16 @@ async def generate_section_queries(state: SectionState) -> Dict[str, Any]:
 
 async def write_section(state: SectionState) -> Dict[str, Any]:
     """Write questions for a deposition topic."""
+    # Update status
+    state["status"] = "writing_section"
+    
     # Get state 
     section = state["section"]
     source_str = state["source_str"]
 
     if not section:
         print("Warning: No section to write")
-        return {"completed_sections": []}
+        return {"completed_sections": [], "status": "error"}
 
     # Format system instructions
     system_instructions = topic_writer_instructions.format(
@@ -237,7 +246,10 @@ async def write_section(state: SectionState) -> Dict[str, Any]:
     print("Preview:", section_content.content[:200], "...")
 
     # Write the updated section to completed sections
-    return {"completed_sections": [section]}
+    return {
+        "completed_sections": [section],
+        "status": "section_written"
+    }
 
 async def write_final_sections(state: SectionState) -> Dict[str, Any]:
     """Write final sections of the deposition outline."""
@@ -247,7 +259,7 @@ async def write_final_sections(state: SectionState) -> Dict[str, Any]:
     
     if not section:
         print("Warning: No section to write")
-        return {"completed_sections": []}
+        return {"completed_sections": [], "status": "error"}
     
     # Format system instructions
     system_instructions = final_topic_writer_instructions.format(
@@ -272,18 +284,24 @@ async def write_final_sections(state: SectionState) -> Dict[str, Any]:
         print("Preview:", section_content.content[:200], "...")
 
         # Return the completed section
-        return {"completed_sections": [completed_section]}
+        return {
+            "completed_sections": [completed_section],
+            "status": "section_written"
+        }
         
     except Exception as e:
         print(f"Error generating content for final section {section['name']}: {str(e)}")
-        return {"completed_sections": []}
+        return {"completed_sections": [], "status": "error"}
 
 def human_feedback(state: ReportState):
     """ No-op node that should be interrupted on """
-    pass
+    state["status"] = "awaiting_feedback"
+    return state
 
 def gather_completed_sections(state: ReportState):
     """ Gather completed sections from research and format them as context for writing the final sections """    
+    # Update status
+    state["status"] = "gathering_sections"
 
     # List of completed sections
     completed_sections = state["completed_sections"]
@@ -300,8 +318,11 @@ def gather_completed_sections(state: ReportState):
 
     # Format completed section to str to use as context for final sections
     completed_report_sections = format_sections(section_objects)
-
-    return {"report_sections_from_research": completed_report_sections}
+    
+    state["report_sections_from_research"] = completed_report_sections
+    state["status"] = "sections_gathered"
+    
+    return state
 
 def initiate_section_writing(state: ReportState):
     """This is the "map" step when we kick off research for some sections of the deposition."""
@@ -337,6 +358,8 @@ def initiate_final_section_writing(state: ReportState):
 
 def compile_final_report(state: ReportState):
     """ Compile the final deposition outline """    
+    # Update status
+    state["status"] = "compiling_report"
 
     # Get sections and completed sections from state
     sections = state["sections"]
@@ -363,16 +386,19 @@ def compile_final_report(state: ReportState):
     # Compile final report
     if not final_sections:
         print("Warning: No sections with content found")
-        return {"final_report": ""}
+        state["status"] = "error"
+        return {"final_report": "", "status": "error"}
         
     all_sections = "\n\n".join([s["content"] for s in final_sections if s.get("content")])
     
     if not all_sections:
         print("Warning: No content found in any sections")
-        return {"final_report": ""}
+        state["status"] = "error"
+        return {"final_report": "", "status": "error"}
         
     print(f"\nSuccessfully compiled final report with {len(final_sections)} sections")
-    return {"final_report": all_sections}
+    state["status"] = "completed"
+    return {"final_report": all_sections, "status": "completed"}
 
 # Report section sub-graph -- 
 

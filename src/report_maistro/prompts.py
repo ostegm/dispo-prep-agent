@@ -96,7 +96,7 @@ Required JSON structure:
 {{
     "queries": [
         {{
-            "query": "string",  // The actual search query
+            "query": "string",  // The actual search query - use natural language, no boolean operators
             "rationale": "string",  // Brief explanation of why this query is useful
             "expected_findings": "string"  // What kind of documents/information this query aims to find
         }}
@@ -107,7 +107,7 @@ Example valid response:
 {{
     "queries": [
         {{
-            "query": "\"product defect\" AND (\"design\" OR \"manufacturing\") AND \"safety test*\"",
+            "query": "product defect safety testing manufacturing process",
             "rationale": "Find documents about product defects and related safety testing",
             "expected_findings": "Safety test reports, defect analyses, manufacturing records"
         }}
@@ -115,8 +115,8 @@ Example valid response:
 }}
 
 Each query should:
-1. Use boolean operators (AND, OR, NOT) and parentheses for complex combinations
-2. Include synonyms and related terms to capture variations
+1. Use natural language phrases that describe what you're looking for
+2. Include relevant keywords and terms
 3. Be specific enough to find relevant documents but not so narrow as to miss important information
 4. Focus on technical and factual aspects relevant to the deposition topic
 
