@@ -1,92 +1,136 @@
 # Report mAIstro
 
-Report mAIstro is an open-source research assistant that generates comprehensive reports on any topic, following a workflow similar to Google's [Gemini Deep Research](https://blog.google/products/gemini/google-gemini-deep-research/). It combines planning, parallel web research, and structured writing with human oversight.
+Report mAIstro is an open-source research assistant that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
 
 Key features:
-- Uses OpenAI o-series reasoning model (default) for intelligent report planning
-- Enables human review and iteration of the research plan
-- Parallelizes web research across multiple report sections, using Claude-3.5-Sonnet for report writing
-- Produces well-formatted markdown reports
-- Supports customizable models, prompts, and report structure
+- Uses Google's Gemini model for OCR and document chunking
+- Leverages Chroma vector database for semantic search of case documents
+- Enables human review and iteration of the deposition plan
+- Parallelizes research across multiple deposition topics
+- Produces well-formatted markdown deposition outlines
+- Supports customizable models, prompts, and deposition structure
 
 ## 🚀 Quickstart
 
-Clone the repository:
+1. Clone the repository:
 ```bash
 git clone https://github.com/langchain-ai/report_maistro.git
 cd report_maistro
 ```
 
-Set API keys for Anthropic (default writer), OpenAI (default planner), and [Tavily](https://tavily.com) for free web search up to 1000 requests):
+2. Set up your environment:
+```bash
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
+# Install uv package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv pip install -e .
+```
+
+3. Set up your API keys:
 ```bash
 cp .env.example .env
 ```
 
 Edit the `.env` file with your API keys:
-
 ```bash
-export TAVILY_API_KEY=<your_tavily_api_key>
-export ANTHROPIC_API_KEY=<your_anthropic_api_key>
-export OPENAI_API_KEY=<your_openai_api_key>
+export OPENAI_API_KEY=<your_openai_api_key>  # For embeddings
+export ANTHROPIC_API_KEY=<your_anthropic_api_key>  # For content generation
+export GOOGLE_API_KEY=<your_google_api_key>  # For OCR and chunking
 ```
 
-Launch the assistant with the LangGraph server, which will open in your browser:
+## 📚 Indexing Case Documents
 
-#### Mac
+1. Place your case documents (PDFs) in the `case_documents/` directory.
 
+2. Run the indexing script:
 ```bash
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
+python -m src.report_maistro.index_case_documents
+```
 
-# Install dependencies and start the LangGraph server
+This will:
+- Use Gemini to OCR and extract text from PDFs
+- Split documents into semantic chunks
+- Compute embeddings using OpenAI's embedding model
+- Store everything in a local Chroma vector database
+
+You can verify the indexed documents by running:
+```bash
+python -m tests.test_chroma_index
+```
+
+## 🏃‍♂️ Running the Code
+
+1. Start the LangGraph server:
+```bash
 uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
 ```
 
-
-Use this to open the Studio UI:
-```
+2. Access the interfaces:
 - 🚀 API: http://127.0.0.1:2024
 - 🎨 Studio UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
 - 📚 API Docs: http://127.0.0.1:2024/docs
+
+3. Run the test workflow:
+```bash
+python -m tests.test_deposition_agent
 ```
 
-## 📖 Customizing the report
+## 📖 How it Works
 
-Optionally, provide a description of the report structure you want as a configuration. You can further tune this during the feedback phase. While a topic alone can generate reports, we found that providing a structure significantly improves quality. For example, business strategy reports might need case studies, while comparative analyses benefit from structured comparison tables. The natural language structure acts as a flexible template, guiding the AI to create more focused and relevant reports.
+1. **Document Processing**
+   - PDFs are converted to images and OCR'd using Gemini
+   - Text is split into semantic chunks (250-1000 words)
+   - Chunks are embedded and stored in Chroma
 
-> See [some example report types here](report_examples/)!
+2. **Deposition Planning**
+   - System analyzes the deposition topic and generates structured sections
+   - Each section is marked for investigation if it requires document research
+   - Human review/feedback can be provided on the plan
 
-## Motivation 
+3. **Document Research**
+   - System generates semantic search queries for each section
+   - Queries are run against the vector database
+   - Relevant document chunks are retrieved and deduplicated
 
-Automating research and report writing is a common need. [Deep Research](https://blog.google/products/gemini/google-gemini-deep-research/) from Google is a great example of this. This open source project mirror the flow of Deep Research, but allow you to customize the models, prompts, and research report structure.
+4. **Content Generation**
+   - System writes questions for each section using retrieved documents
+   - Background sections are written with standard questions
+   - Final sections combine insights from research
 
-## How it works
-   
-1. `Plan and Execute` - Report mAIstro follows a [plan-and-execute workflow](https://github.com/assafelovic/gpt-researcher) that separates planning from research, allowing for better resource management, human-in-the-loop approval, and significantly reducing overall report creation time:
+## 🔧 Customization
 
-   - **Planning Phase**: An LLM analyzes the user's `topic` and `structure` using a planning prompt to create the report sections first. 
-   - **Research Phase**: The system parallelizes web research across all sections requiring external data:
-     - Uses [Tavily API](https://tavily.com/) for targeted web searches
-     - Processes multiple sections simultaneously for faster report generation
-     - Synthesizes gathered information into coherent section content
-   
-2. `Sequential Writing` - The report generation follows a logical sequence:
-   - First, completes all research-dependent sections in parallel
-   - Then generates connecting sections like introductions and conclusions
-   - Uses insights from research sections to create cohesive narratives
-   - Maintains contextual awareness across all sections
-   
-   While this sequence can be customized via the `structure`, the default flow ensures that conclusions meaningfully incorporate research findings.
+The system can be customized through:
+- `src/report_maistro/configuration.py`: Model selection, chunk sizes, etc.
+- `src/report_maistro/prompts.py`: Instructions for each step
+- `DEFAULT_DEPOSITION_STRUCTURE`: Organization of the deposition
 
-3. `Managing different types` - Report mAIstro is built on LangGraph, which has native support for configuration management [using assistants](https://langchain-ai.github.io/langgraph/concepts/assistants/). The report `structure` is a field in the graph configuration, which allows users to create different assistants for different types of reports. 
+## 🧪 Testing
 
-## UX
+Run individual test files:
+```bash
+# Test document processing
+python -m tests.test_ocr_chunking
 
-### Local deployment
+# Test vector database
+python -m tests.test_chroma_index
 
-Follow the [quickstart](#quickstart) to run the assistant locally.
+# Test full workflow
+python -m tests.test_deposition_agent
+```
 
-### Hosted deployment
- 
-You can easily deploy to [LangGraph Platform ](https://langchain-ai.github.io/langgraph/concepts/#deployment-options). 
+
+
+## Next Steps
+
+- Fix the local testing script - it works when I use langgraph.
+- Investigate chunking vs sending all documents with the initial planning step.
+- Move all prompt related stuff to prompts.py
+- Remove print statements
+- Figure out if we really need to fan out to sections or can we just do it as one step?
+- Convert my back medical record summary to a injury related to this case and index. 
+- Checkout email from Nick https://mail.google.com/mail/u/0/#inbox/FMfcgzQZTCjdhFBklTDhxZQBJFsvFBjt
