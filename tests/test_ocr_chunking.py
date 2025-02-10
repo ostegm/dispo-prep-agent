@@ -3,8 +3,8 @@
 import asyncio
 from pathlib import Path
 import time
-from src.report_maistro.index_case_documents import DocumentProcessor, OCR_PROMPT, CHUNKING_PROMPT
-from src.report_maistro.configuration import Configuration
+from src.depo_prep.index_case_documents import DocumentProcessor, OCR_PROMPT, CHUNKING_PROMPT
+from src.depo_prep.configuration import Configuration
 
 async def test_document_processing():
     """Process a PDF document and verify OCR and chunking."""

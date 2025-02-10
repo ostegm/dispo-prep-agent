@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any
 import time
 
-from report_maistro.configuration import Configuration
+from depo_prep.configuration import Configuration
 
 LANGGRAPH_API_URL = "http://localhost:2024"
 
@@ -18,7 +18,7 @@ async def get_or_create_assistant() -> str:
         # First try to search for existing assistants
         response = await client.post(
             f"{LANGGRAPH_API_URL}/assistants/search",
-            json={"graph_id": "report_masitro"}
+            json={"graph_id": "depo_prep"}
         )
         response.raise_for_status()
         assistants = response.json()
@@ -30,9 +30,9 @@ async def get_or_create_assistant() -> str:
         response = await client.post(
             f"{LANGGRAPH_API_URL}/assistants",
             json={
-                "graph_id": "report_masitro",
+                "graph_id": "depo_prep",
                 "assistant_id": str(uuid.uuid4()),
-                "name": "Report Maistro Assistant"
+                "name": "Depo Prep Assistant"
             }
         )
         response.raise_for_status()

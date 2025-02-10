@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from src.report_maistro.configuration import Configuration
+from src.depo_prep.configuration import Configuration
 
 OCR_PROMPT = """\
 OCR the following page into Markdown. Ignore line numbers, unnecessary spaces and line breaks.

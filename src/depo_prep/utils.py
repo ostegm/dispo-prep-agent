@@ -4,7 +4,7 @@ import chromadb
 from chromadb.config import Settings
 import openai
 from openai import AsyncOpenAI
-from src.report_maistro.state import Section
+from src.depo_prep.state import Section
 import json
 import re
 

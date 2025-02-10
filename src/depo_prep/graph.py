@@ -14,8 +14,8 @@ import asyncio
 from langchain_core.language_models.chat_models import BaseChatModel as ChatModel
 import re
 
-from src.report_maistro.state import ReportStateInput, ReportStateOutput, Sections, ReportState, SectionState, SectionOutputState, Queries, Section
-from src.report_maistro.prompts import (
+from src.depo_prep.state import ReportStateInput, ReportStateOutput, Sections, ReportState, SectionState, SectionOutputState, Queries, Section
+from src.depo_prep.prompts import (
     deposition_planner_query_writer_instructions, 
     deposition_planner_instructions, 
     query_writer_instructions, 
@@ -25,8 +25,8 @@ from src.report_maistro.prompts import (
     SECTIONS_SCHEMA,
     JSON_FORMATTER_PROMPT
 )
-from src.report_maistro.configuration import Configuration
-from src.report_maistro.utils import (
+from src.depo_prep.configuration import Configuration
+from src.depo_prep.utils import (
     deduplicate_and_format_sources, 
     format_sections, 
     vector_db_search_async,

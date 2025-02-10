@@ -1,5 +1,5 @@
 [project]
-name = "report_maistro"
+name = "depo_prep"
 version = "0.0.1"
 description = "Planning, research, and report generation."
 authors = [
@@ -31,10 +31,10 @@ requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["report_maistro"]
+packages = ["depo_prep"]
 
 [tool.setuptools.package-dir]
-"report_maistro" = "src/report_maistro"
+"depo_prep" = "src/depo_prep"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]

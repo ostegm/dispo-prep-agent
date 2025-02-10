@@ -1,6 +1,6 @@
-# Report mAIstro
+# Depo Prep Agent
 
-Report mAIstro is an open-source research assistant that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
+Depo Prep Agent is an open-source research assistant that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
 
 Key features:
 - Uses Google's Gemini model for OCR and document chunking
@@ -13,19 +13,16 @@ Key features:
 ## 🚀 Quickstart
 
 1. Clone the repository:
-```bash
-git clone https://github.com/langchain-ai/report_maistro.git
-cd report_maistro
-```
+
 
 2. Set up your environment:
 ```bash
 # Create and activate a virtual environment
-python -m venv .venv
+uv venv 
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
+brew install uv
 
 # Install dependencies
 uv pip install -e .
@@ -49,7 +46,7 @@ export GOOGLE_API_KEY=<your_google_api_key>  # For OCR and chunking
 
 2. Run the indexing script:
 ```bash
-python -m src.report_maistro.index_case_documents
+python -m src.depo_prep.index_case_documents
 ```
 
 This will:
@@ -105,8 +102,8 @@ python -m tests.test_deposition_agent
 ## 🔧 Customization
 
 The system can be customized through:
-- `src/report_maistro/configuration.py`: Model selection, chunk sizes, etc.
-- `src/report_maistro/prompts.py`: Instructions for each step
+- `src/depo_prep/configuration.py`: Model selection, chunk sizes, etc.
+- `src/depo_prep/prompts.py`: Instructions for each step
 - `DEFAULT_DEPOSITION_STRUCTURE`: Organization of the deposition
 
 ## 🧪 Testing

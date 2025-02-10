@@ -2,7 +2,7 @@
 
 import chromadb
 from chromadb.config import Settings
-from src.report_maistro.configuration import Configuration
+from src.depo_prep.configuration import Configuration
 from pathlib import Path
 import asyncio
 from openai import AsyncOpenAI
