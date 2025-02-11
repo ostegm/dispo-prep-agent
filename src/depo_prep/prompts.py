@@ -79,10 +79,17 @@ Some topics (like background questions) may not require document research becaus
 The topic of the deposition is:
 {topic}
 
+The context of the deposition is:
+{context}
+
 The deposition should follow this organization: 
 {deposition_organization}
 
-Remember to return ONLY valid JSON that matches the exact structure shown above."""
+Remember to return ONLY valid JSON that matches the exact structure shown above.
+
+Incorporate the following feedback on the plan:
+{feedback}
+"""
 
 # Query writer instructions
 query_writer_instructions = """You are a legal research expert tasked with generating search queries for document discovery in legal cases.

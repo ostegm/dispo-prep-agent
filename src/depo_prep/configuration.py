@@ -28,7 +28,7 @@ class Configuration(BaseModel):
     """Configuration for the deposition preparation process."""
     
     # Model configurations
-    planner_model: str = "gemini-2.0-flash-thinking-exp-01-21"
+    planner_model: str = "gemini-2.0-flash" #-thinking-exp-01-21"
     writer_model: str = "claude-3-sonnet-20240229"
     
     # Planning configurations

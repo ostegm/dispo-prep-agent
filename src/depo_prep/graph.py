@@ -58,13 +58,16 @@ async def generate_report_plan(state: ReportState) -> Dict[str, Any]:
     
     # Get topic from state
     topic = state["topic"]
-    
+    context = "" # TODD
+    feedback = state.get("feedback_on_report_plan", None)
     # Generate deposition plan using planner model with focused instructions
     messages = [
         HumanMessage(content=deposition_planner_instructions.format(
             topic=topic,
             deposition_organization=config.deposition_organization,
-            max_sections=config.max_sections
+            max_sections=config.max_sections,
+            feedback=feedback,
+            context=context
         ))
     ]
     
@@ -326,11 +329,8 @@ def gather_completed_sections(state: ReportState):
 
 def initiate_section_writing(state: ReportState):
     """This is the "map" step when we kick off research for some sections of the deposition."""
-    # Get feedback
-    feedback = state.get("feedback_on_report_plan", None)
-
-    # If feedback exists and plan not accepted, regenerate plan
-    if not state.get("accept_report_plan") and feedback:
+    # If plan not accepted, regenerate plan, incorporating feedback.
+    if not state.get("accept_report_plan", False):
         return "generate_report_plan"
     
     # Kick off section writing in parallel via Send() API for any sections that require investigation
