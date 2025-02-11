@@ -12,13 +12,20 @@ from depo_prep.configuration import Configuration
 
 LANGGRAPH_API_URL = "http://localhost:2024"
 
-async def get_or_create_assistant() -> str:
+def get_available_graphs() -> Dict[str, str]:
+    """Get available graphs from langgraph.json."""
+    langgraph_path = Path(__file__).parent.parent / "langgraph.json"
+    with open(langgraph_path) as f:
+        config = json.load(f)
+    return config.get("graphs", {})
+
+async def get_or_create_assistant(graph_id: str) -> str:
     """Get or create an assistant for the graph."""
     async with httpx.AsyncClient() as client:
         # First try to search for existing assistants
         response = await client.post(
             f"{LANGGRAPH_API_URL}/assistants/search",
-            json={"graph_id": "depo_prep"}
+            json={"graph_id": graph_id}
         )
         response.raise_for_status()
         assistants = response.json()
@@ -30,9 +37,9 @@ async def get_or_create_assistant() -> str:
         response = await client.post(
             f"{LANGGRAPH_API_URL}/assistants",
             json={
-                "graph_id": "depo_prep",
+                "graph_id": graph_id,
                 "assistant_id": str(uuid.uuid4()),
-                "name": "Depo Prep Assistant"
+                "name": f"{graph_id.title()} Assistant"
             }
         )
         response.raise_for_status()
@@ -138,6 +145,30 @@ async def test_deposition_workflow():
     # Initialize configuration
     config = Configuration()
     
+    # Get available graphs from langgraph.json
+    available_graphs = get_available_graphs()
+    
+    if not available_graphs:
+        raise ValueError("No graphs found in langgraph.json")
+    
+    # Display available graphs
+    print("\nAvailable graphs:")
+    for i, (graph_id, path) in enumerate(available_graphs.items(), 1):
+        description = "(Multi-step with human feedback)" if graph_id == "depo_prep" else "(Single-step generation)"
+        print(f"{i}. {graph_id} {description}")
+        print(f"   Path: {path}")
+    
+    # Get user selection
+    while True:
+        graph_choice = input(f"\nSelect graph (1-{len(available_graphs)}): ").strip()
+        if graph_choice.isdigit() and 1 <= int(graph_choice) <= len(available_graphs):
+            break
+        print(f"Invalid choice. Please enter a number between 1 and {len(available_graphs)}")
+    
+    # Get selected graph_id
+    graph_id = list(available_graphs.keys())[int(graph_choice) - 1]
+    print(f"\nUsing graph: {graph_id}")
+    
     # Create reports directory in project root
     reports_dir = Path(__file__).parent.parent / "reports"
     reports_dir.mkdir(exist_ok=True)
@@ -164,7 +195,7 @@ async def test_deposition_workflow():
     }
     
     # Get or create assistant
-    assistant_id = await get_or_create_assistant()
+    assistant_id = await get_or_create_assistant(graph_id)
     print(f"\nUsing assistant: {assistant_id}")
     
     # Create thread

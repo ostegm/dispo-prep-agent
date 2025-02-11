@@ -1,7 +1,8 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-      "depo_prep": "./src/depo_prep/graph.py:graph"
+      "depo_prep": "./src/depo_prep/graph.py:graph",
+      "one_shot": "./src/depo_prep/one_shot_graph.py:graph"
     },
     "python_version": "3.11",
     "env": "./.env",

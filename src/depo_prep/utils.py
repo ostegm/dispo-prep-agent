@@ -17,6 +17,15 @@ chroma_client = chromadb.Client(Settings(
     is_persistent=True
 ))
 
+async def get_embedding(query: str) -> List[float]:
+    """Get embedding for a text using OpenAI's API."""
+    async_client = AsyncOpenAI()
+    response = await async_client.embeddings.create(
+        model="text-embedding-ada-002",
+        input=query
+    )
+    return response.data[0].embedding
+
 async def vector_db_search_async(chroma_collection_name: str, search_queries: Union[str, List[str]]) -> List[Dict]:
     """
     Performs concurrent vector database searches using Chroma.
@@ -97,3 +106,46 @@ async def get_full_document_text(chroma_collection_name: str, filename: str) -> 
     full_text = ' '.join(chunk[0] for chunk in sorted_chunks)
     
     return full_text
+
+async def get_all_documents_text(chroma_collection_name: str) -> Dict[str, str]:
+    """
+    Fetches and combines all documents from the vector database, organized by source file.
+    
+    Returns:
+        Dict[str, str]: Dictionary mapping filenames to their full document text
+    """
+    try:
+        collection = chroma_client.get_collection(chroma_collection_name)
+        
+        # Get all documents
+        results = collection.get(
+            include=['documents', 'metadatas']
+        )
+        
+        if not results or not results.get('documents'):
+            logger.warning("No documents found in the vector database")
+            return {}
+
+        # Group chunks by source file
+        documents = {}
+        chunks = list(zip(results['documents'], results['metadatas']))
+        
+        # Sort and combine chunks for each source file
+        for text, metadata in chunks:
+            source = metadata.get('source', 'unknown')
+            if source not in documents:
+                documents[source] = []
+            documents[source].append((text, metadata.get('chunk_index', 0)))
+        
+        # Sort chunks by index and join text for each document
+        full_documents = {}
+        for source, chunks in documents.items():
+            sorted_chunks = sorted(chunks, key=lambda x: x[1])
+            full_documents[source] = ' '.join(chunk[0] for chunk in sorted_chunks)
+            logger.info(f"Retrieved {len(chunks)} chunks for {source}")
+        
+        return full_documents
+        
+    except Exception as e:
+        logger.error(f"Error retrieving documents: {str(e)}")
+        raise

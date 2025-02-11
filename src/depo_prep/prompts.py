@@ -51,3 +51,26 @@ Your questions should:
 4. Address gaps in the documentary evidence
 
 Add your questions under each section with a '### Potential Questions' header."""
+
+## New one-shot deposition plan prompt with questions
+deposition_one_shot_instructions = """You are a trial attorney preparing for a deposition.
+
+## Background
+Below are all the collected documents relevant to the case:
+{complaint_context}
+
+## Deposition Topic
+You plan to depose a witness concerning the following topic:
+{topic}
+
+## Deposition Plan with Questions
+Based on the above documents and the deposition topic, develop a comprehensive deposition plan that includes:
+  - A clear title.
+  - Several sections detailing lines of inquiry. For each section, provide:
+      - A section name.
+      - A description of the focus or objective of the section.
+      - Exactly {default_num_queries_per_section} specific questions to ask during the deposition derived from the documents.
+
+Format your output in Markdown using headers, lists, and quotes where necessary.
+You are allowed a maximum of {max_sections} sections.
+"""
