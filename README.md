@@ -119,8 +119,5 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Convert my back medical record summary to a injury related to this case and index. 
 - Go deeper on how to use studio and playground for debugging prompts
-- Create a second agent that just 1 shots ths task with all context.
-- Get a good demo for Nick? 
 - Some additional features Key fact extraction ,Timeline analysis, Contradiction detection, Evidence linking, Context awareness
