@@ -16,9 +16,8 @@ chroma_client = chromadb.Client(Settings(
     persist_directory=config.chroma_persist_dir,
     is_persistent=True
 ))
-collection = chroma_client.get_collection(config.chroma_collection_name)
 
-async def vector_db_search_async(search_queries: Union[str, List[str]]) -> List[Dict]:
+async def vector_db_search_async(chroma_collection_name: str, search_queries: Union[str, List[str]]) -> List[Dict]:
     """
     Performs concurrent vector database searches using Chroma.
     
@@ -39,7 +38,7 @@ async def vector_db_search_async(search_queries: Union[str, List[str]]) -> List[
             input=query
         )
         return response.data[0].embedding
-        
+    collection = chroma_client.get_collection(chroma_collection_name)
     async def search_single_query(query: str):
         embedding = await get_embedding(query)
         results = collection.query(
@@ -68,7 +67,7 @@ async def vector_db_search_async(search_queries: Union[str, List[str]]) -> List[
 
 
 
-async def get_full_document_text(filename: str) -> str:
+async def get_full_document_text(chroma_collection_name: str, filename: str) -> str:
     """
     Fetches and combines all chunks of a document from the vector database.
     
@@ -79,6 +78,7 @@ async def get_full_document_text(filename: str) -> str:
         str: The full text of the document
     """
     # Get all documents with this filename
+    collection = chroma_client.get_collection(chroma_collection_name)
     results = collection.get(
         where={
             "source": filename  # Simple exact match

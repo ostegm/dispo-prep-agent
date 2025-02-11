@@ -119,7 +119,9 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-
-- Cleanup use of configurable in graph.py - configure max sections, collection to use, number of queries per section, etc.
+- Get the test script working again
 - Convert my back medical record summary to a injury related to this case and index. 
 - Checkout email from Nick https://mail.google.com/mail/u/0/#inbox/FMfcgzQZTCjdhFBklTDhxZQBJFsvFBjt
+- Go deeper on how to use studio and playground for debugging prompts
+- Create a second agent that just 1 shots ths task with all context.
+- Get a good demo for Nick? 

@@ -29,9 +29,8 @@ writer_model = ChatAnthropic(
 async def generate_report_plan(state: ReportState, config: RunnableConfig) -> ReportState:
     """Generate initial deposition plan."""
     configurable = Configuration.from_runnable_config(config)
-    del configurable
     # Fetch complaint text
-    complaint_text = await utils.get_full_document_text("complaint.pdf")
+    complaint_text = await utils.get_full_document_text(configurable.chroma_collection_name, "complaint.pdf")
     
     # Prepare feedback context if it exists
     feedback_context = ""
@@ -42,7 +41,9 @@ async def generate_report_plan(state: ReportState, config: RunnableConfig) -> Re
     system_instructions = prompts.deposition_planner_instructions.format(
         complaint_context=complaint_text,
         topic=state["topic"],
-        feedback_context=feedback_context
+        feedback_context=feedback_context,
+        max_sections=configurable.max_sections,
+        default_num_queries_per_section=configurable.default_num_queries_per_section
     )
     
     # Generate outline
@@ -66,7 +67,12 @@ async def generate_report_plan(state: ReportState, config: RunnableConfig) -> Re
     
     async def process_section(raw_section: str):
         section_messages = [
-            SystemMessage(content="Convert this deposition section into a structured format with a name, description, and search queries."),
+            SystemMessage(content="""Convert this deposition section into a structured format with:
+- A name field as a brief title
+- A description field explaining the section
+- A queries field as a list of search queries (not a string)
+
+Format the output as a JSON object with these exact fields."""),
             HumanMessage(content=raw_section)
         ]
         section_data = await structured_planner.ainvoke(section_messages)
@@ -79,6 +85,7 @@ async def generate_report_plan(state: ReportState, config: RunnableConfig) -> Re
     
     # Update state with structured sections
     state["sections"] = structured_sections
+    state["complaint_text"] = complaint_text
     state["status"] = "plan_generated"
     
     return state
@@ -138,10 +145,8 @@ async def gather_search_results(
     config: RunnableConfig
 ) -> ReportState:
     """Gather all vector search results into structured format."""
-    del config
-    # Get complaint text
-    # TODO: Configure the collection... 
-    complaint_text = await utils.get_full_document_text("complaint.pdf")
+    configurable = Configuration.from_runnable_config(config)
+    complaint_text = state.get("complaint_text", "")
     
     # Gather all searches in parallel
     search_tasks = []
@@ -151,7 +156,7 @@ async def gather_search_results(
                 "section_name": section["name"],
                 "query": query,
                 "description": section["description"],
-                "task": utils.vector_db_search_async(query)
+                "task": utils.vector_db_search_async(configurable.chroma_collection_name, query)
             })
     
     # Execute all searches concurrently
@@ -170,7 +175,6 @@ async def gather_search_results(
     
     # Store in state
     state["sections"] = search_results
-    state["complaint_text"] = complaint_text
     state["status"] = "searches_completed"
     
     return state

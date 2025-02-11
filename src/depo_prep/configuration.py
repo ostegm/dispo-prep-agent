@@ -10,13 +10,13 @@ class Configuration(BaseModel):
     """Configuration for the deposition preparation process."""
     
     # Model configurations
-    planner_model: str = "gemini-2.0-flash" #-thinking-exp-01-21"
+    planner_model: str = "gemini-2.0-flash-thinking-exp-01-21"
     writer_model: str = "claude-3-sonnet-20240229"
     
     # Planning configurations
     max_sections: int = 3
     max_tokens_per_source: int = 1000
-    default_num_queries_per_section: int = 1
+    default_num_queries_per_section: int = 3
     
     # Vector DB configurations
     chroma_persist_dir: str = Field(
@@ -24,7 +24,7 @@ class Configuration(BaseModel):
     )
     chroma_collection_name: str = "case_documents"
     embedding_model: str = "text-embedding-ada-002"
-    max_results_per_query: int = 5
+    max_results_per_query: int = 3
 
     def __init__(self, **data):
         super().__init__(**data)

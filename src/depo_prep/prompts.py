@@ -1,21 +1,32 @@
 # Prompt generating the deposition outline
 deposition_planner_instructions = """You are a trial attorney preparing for a deposition. 
 
+## Background
+
+### Complaint
+
 The complaint in the case is:
 {complaint_context}
+
+### Topic
 
 You plan to depose a witness about the following topic: {topic}
 
 {feedback_context}
 
+## Instructions
+
 Please provide an outline of the lines of questioning you would cover during a deposition.
 Your output must be split into separate sections using <section> and </section> HTML tags.
 Do not propose any questions, only outline the sections you would cover.
 
-Each section must include:
-1. A clear section name
-2. A brief description explaining why this line of questioning is important
-3. Suggested vector search queries that would help find relevant documents for this section"""
+### Detailed Instructions
+ - Provide at most {max_sections} sections, focusing on the most important topics.
+ - Each section must include:
+   - A clear section name
+   - A brief description explaining the goal of this section and why it is important to achieve the goal of the overall deposition topic.
+   - Exactly {default_num_queries_per_section} vector search queries that would help find relevant documents for this section. 
+"""
 
 # Markdown compilation prompt
 markdown_compiler_prompt = """Create a markdown formatted deposition plan that includes:
