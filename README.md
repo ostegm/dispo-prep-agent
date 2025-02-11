@@ -120,7 +120,6 @@ python -m tests.test_deposition_agent
 
 ## Next Steps
 
-- Cleanup use of configurable in graph.py
-- Use send api for section json formatting https://github.com/langchain-ai/report-mAIstro/blob/4751052afb78df50a0275e1ed7c5e45940bbb1ed/src/report_maistro/graph.py#L128C1-L147C10
+- Cleanup use of configurable in graph.py - configure max sections, collection to use, number of queries per section, etc.
 - Convert my back medical record summary to a injury related to this case and index. 
 - Checkout email from Nick https://mail.google.com/mail/u/0/#inbox/FMfcgzQZTCjdhFBklTDhxZQBJFsvFBjt
