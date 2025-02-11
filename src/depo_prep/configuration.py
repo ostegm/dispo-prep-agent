@@ -1,28 +1,10 @@
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import fields
 from typing import Any, Optional
 from pathlib import Path
 
 from langchain_core.runnables import RunnableConfig
-from typing_extensions import Annotated
-from dataclasses import dataclass
 from pydantic import BaseModel, Field
-
-DEFAULT_DEPOSITION_STRUCTURE = """The deposition structure should focus on gathering testimony about the topic:
-
-1. Background/Competency (no document research needed)
-   - Establish witness identity and competency
-   - Basic background information
-
-2. Main Deposition Topics:
-   - Each topic should focus on a key area of testimony
-   - Build foundation before key admissions
-   - Include document references where applicable
-   
-3. Wrap-up
-   - Catch-all questions
-   - Lock in key admissions
-   - Allow for cleanup questions"""
 
 class Configuration(BaseModel):
     """Configuration for the deposition preparation process."""
@@ -34,7 +16,6 @@ class Configuration(BaseModel):
     # Planning configurations
     max_sections: int = 3
     max_tokens_per_source: int = 1000
-    deposition_organization: str = DEFAULT_DEPOSITION_STRUCTURE
     default_num_queries_per_section: int = 1
     
     # Vector DB configurations
@@ -51,16 +32,14 @@ class Configuration(BaseModel):
         Path(self.chroma_persist_dir).mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def from_runnable_config(
-        cls, config: Optional[RunnableConfig] = None
-    ) -> "Configuration":
+    def from_runnable_config(cls, config: Optional[RunnableConfig] = None) -> "Configuration":
         """Create a Configuration instance from a RunnableConfig."""
         configurable = (
             config["configurable"] if config and "configurable" in config else {}
         )
-        values: dict[str, Any] = {
-            f.name: os.environ.get(f.name.upper(), configurable.get(f.name))
-            for f in fields(cls)
-            if f.init
+        # Use model_fields instead of dataclass fields
+        values = {
+            field: configurable.get(field) 
+            for field in cls.model_fields.keys()
         }
-        return cls(**{k: v for k, v in values.items() if v})
+        return cls(**{k: v for k, v in values.items() if v is not None})

@@ -1,211 +1,42 @@
-# JSON Schema definitions
-QUERY_SCHEMA = """{
-    "queries": [
-        {
-            "query": "string",  // A simple phrase or sentence describing what to find - no boolean operators
-            "rationale": "string",  // Why this query is useful
-            "expected_findings": "string"  // What kind of documents we expect to find
-        }
-    ]
-}"""
-
-SECTIONS_SCHEMA = """{
-    "sections": [
-        {
-            "name": "string - Name for this line of questioning",
-            "description": "string - Brief overview of what you want to establish",
-            "investigation": "boolean - Whether to search case documents for this topic",
-            "content": null
-        }
-    ]
-}"""
-
-# JSON formatting prompt
-JSON_FORMATTER_PROMPT = """You are a JSON formatting expert. Your task is to take the following content and format it as a valid JSON object.
-
-Required JSON structure:
-{schema_description}
-
-Content to format:
-{content}
-
-Return ONLY the JSON object, no other text or explanations. The response must be directly parseable by json.loads()."""
-
-# Prompt to generate a search query to help with planning the deposition
-deposition_planner_query_writer_instructions="""You are an expert trial attorney, helping to plan a deposition. 
-
-The deposition will focus on the following topic:
-
-{topic}
-
-The deposition structure will follow these guidelines:
-
-{deposition_organization}
-
-Your goal is to generate {number_of_queries} search queries that will help gather comprehensive information from case documents for planning the deposition topics. 
-
-The query should:
-
-1. Be related to the deposition topic 
-2. Help identify relevant facts and evidence in the case documents
-3. Focus on finding information that supports your line of questioning
-
-Make the query specific enough to find relevant case documents while covering all aspects needed for effective questioning."""
-
 # Prompt generating the deposition outline
-deposition_planner_instructions="""I want a plan for a deposition. 
+deposition_planner_instructions = """You are a trial attorney preparing for a deposition. 
 
-Your response must be a valid JSON object with this exact structure:
-{{
-    "sections": [
-        {{
-            "name": "string - Name for this line of questioning",
-            "description": "string - Brief overview of what you want to establish",
-            "investigation": "boolean - Whether to search case documents for this topic",
-            "content": null
-        }}
-    ]
-}}
+The complaint in the case is:
+{complaint_context}
 
-Each topic should have these exact fields:
-- name: Name for this line of questioning
-- description: Brief overview of what you want to establish through this line of questioning
-- investigation: true/false indicating whether to search case documents for this topic
-- content: should be null for now
+You plan to depose a witness about the following topic: {topic}
 
-IMPORTANT: You must generate no more than {max_sections} sections total.
-Some topics (like background questions) may not require document research because they are standard questions.
+{feedback_context}
 
-The topic of the deposition is:
-{topic}
+Please provide an outline of the lines of questioning you would cover during a deposition.
+Your output must be split into separate sections using <section> and </section> HTML tags.
+Do not propose any questions, only outline the sections you would cover.
 
-The context of the deposition is:
-{context}
+Each section must include:
+1. A clear section name
+2. A brief description explaining why this line of questioning is important
+3. Suggested vector search queries that would help find relevant documents for this section"""
 
-The deposition should follow this organization: 
-{deposition_organization}
+# Markdown compilation prompt
+markdown_compiler_prompt = """Create a markdown formatted deposition plan that includes:
+1. A title with the deposition topic
+2. The case background from the complaint
+3. Each line of questioning, including:
+   - Section name and goal
+   - Relevant documents found from searches
+   - Any existing questions/content
 
-Remember to return ONLY valid JSON that matches the exact structure shown above.
+Use standard markdown formatting with headers, lists, and quotes for important excerpts.
+Organize the search results clearly under each section they belong to."""
 
-Incorporate the following feedback on the plan:
-{feedback}
-"""
+# Question generation prompt
+deposition_questions_prompt = """You are an expert trial attorney preparing for a deposition.
+Review the provided deposition plan and generate specific questions for each section.
 
-# Query writer instructions
-query_writer_instructions = """You are a legal research expert tasked with generating search queries for document discovery in legal cases.
+Your questions should:
+1. Establish key facts from the documents
+2. Explore potential inconsistencies
+3. Lock in favorable testimony
+4. Address gaps in the documentary evidence
 
-Your task is to generate {number_of_queries} search queries that will help find relevant documents for the given deposition topic.
-
-CRITICAL: You MUST return ONLY a valid JSON object. No other text, no markdown, no explanations outside the JSON.
-The response must be parseable by json.loads() without any preprocessing.
-
-Required JSON structure:
-{{
-    "queries": [
-        {{
-            "query": "string",  // The actual search query - use natural language, no boolean operators
-            "rationale": "string",  // Brief explanation of why this query is useful
-            "expected_findings": "string"  // What kind of documents/information this query aims to find
-        }}
-    ]
-}}
-
-Example valid response:
-{{
-    "queries": [
-        {{
-            "query": "product defect safety testing manufacturing process",
-            "rationale": "Find documents about product defects and related safety testing",
-            "expected_findings": "Safety test reports, defect analyses, manufacturing records"
-        }}
-    ]
-}}
-
-Each query should:
-1. Use natural language phrases that describe what you're looking for
-2. Include relevant keywords and terms
-3. Be specific enough to find relevant documents but not so narrow as to miss important information
-4. Focus on technical and factual aspects relevant to the deposition topic
-
-Topic: {topic}
-
-Remember: Return ONLY the JSON object. No other text or formatting."""
-
-# Topic writer instructions
-topic_writer_instructions = """You are an expert trial attorney preparing questions for a deposition.
-
-Topic for this line of questioning:
-{topic}
-
-Guidelines for writing:
-
-1. Question Structure:
-- Start with background/foundation questions
-- Use proper question format
-- Build questions logically
-- Include follow-up questions
-- Note potential exhibits to reference
-
-2. Length and Style:
-- Clear and concise questions
-- No compound questions
-- Avoid leading questions unless for impeachment
-- Use simple language
-- Start with your most important area in **bold**
-- Group related questions together
-
-3. Organization:
-- Use ## for topic title (Markdown format)
-- Use ### for subtopics
-- Include ONE of these structural elements:
-  * Either a timeline of key events (using Markdown table)
-  * Or a list of key documents to reference (using Markdown list)
-- End with ### Sources that references the case documents
-
-4. Writing Approach:
-- Include specific quotes from documents when relevant
-- Note potential admissions to seek
-- Include impeachment points if applicable
-- Focus on getting admissible evidence
-- Consider objections and how to overcome them
-
-5. Use this source material from case documents:
-{context}"""
-
-final_topic_writer_instructions="""You are an expert trial attorney finalizing the deposition outline.
-
-Topic to write: 
-{topic}
-
-Available deposition content:
-{context}
-
-1. Topic-Specific Approach:
-
-For Introduction/Background:
-- Use # for deposition title (Markdown format)
-- Standard background questions
-- Questions about witness competency
-- No document references needed
-- Focus on establishing record
-
-For Conclusion/Wrap-up:
-- Use ## for topic title (Markdown format)
-- Include ONE of these elements:
-    * Either a checklist of key admissions obtained (using Markdown list)
-    * Or a summary table of critical testimony (using Markdown table)
-- End with catch-all questions
-- Include time for cleanup questions
-- No sources section needed
-
-2. Writing Approach:
-- Clear and concise questions
-- Logical flow
-- Consider record for trial
-- Focus on key admissions
-
-3. Quality Checks:
-- For introduction: Standard background, competency questions
-- For conclusion: Cleanup questions, summary of key points
-- Proper question format
-- Complete record"""
+Add your questions under each section with a '### Potential Questions' header."""

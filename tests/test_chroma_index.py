@@ -53,21 +53,21 @@ async def test_indexed_data():
                 })
             
             # Print summary for each document
-            for source, chunks in sorted(chunks_by_doc.items()):
-                print(f"\nDocument: {source}")
-                print(f"Number of chunks: {len(chunks)}")
-                total_words = sum(chunk['word_count'] for chunk in chunks)
-                print(f"Total words: {total_words}")
-                print(f"Average words per chunk: {total_words/len(chunks):.1f}")
-                print("\nChunk sizes:")
-                for chunk in sorted(chunks, key=lambda x: x['chunk_index']):
-                    print(f"  Chunk {chunk['chunk_index']+1}/{chunk['total_chunks']}: {chunk['word_count']} words")
-                print("\nChunk contents:")
-                for chunk in sorted(chunks, key=lambda x: x['chunk_index']):
-                    print(f"\nChunk {chunk['chunk_index']+1}:")
-                    print("-" * 40)
-                    print(results['documents'][chunk['chunk_index']])
-                    print("-" * 40)
+            # for source, chunks in sorted(chunks_by_doc.items()):
+            #     print(f"\nDocument: {source}")
+            #     print(f"Number of chunks: {len(chunks)}")
+            #     total_words = sum(chunk['word_count'] for chunk in chunks)
+            #     print(f"Total words: {total_words}")
+            #     print(f"Average words per chunk: {total_words/len(chunks):.1f}")
+            #     print("\nChunk sizes:")
+            #     for chunk in sorted(chunks, key=lambda x: x['chunk_index']):
+            #         print(f"  Chunk {chunk['chunk_index']+1}/{chunk['total_chunks']}: {chunk['word_count']} words")
+            #     print("\nChunk contents:")
+            #     for chunk in sorted(chunks, key=lambda x: x['chunk_index']):
+            #         print(f"\nChunk {chunk['chunk_index']+1}:")
+            #         print("-" * 40)
+            #         print(results['documents'][chunk['chunk_index']])
+            #         print("-" * 40)
             
             # Test search functionality
             print("\nTesting Search:")
@@ -85,7 +85,7 @@ async def test_indexed_data():
             # Search using the embedding
             search_results = collection.query(
                 query_embeddings=[query_embedding],
-                n_results=5
+                n_results=2
             )
             
             if len(search_results['documents'][0]) > 0:
@@ -101,5 +101,21 @@ async def test_indexed_data():
         print(f"Error accessing collection: {e}")
         raise
 
+async def test_get_full_document_text():
+    """Test the get_full_document_text function specifically."""
+    from src.depo_prep.utils import get_full_document_text
+    
+    try:
+        text = await get_full_document_text("complaint.pdf")
+        print("\nSuccessfully retrieved complaint text:")
+        print(f"Text length: {len(text)} characters")
+        print("First 200 characters:")
+        print(text[:])
+        assert len(text) > 0, "Retrieved text should not be empty"
+    except Exception as e:
+        print(f"\nError testing get_full_document_text: {str(e)}")
+        raise
+
 if __name__ == "__main__":
     asyncio.run(test_indexed_data()) 
+    asyncio.run(test_get_full_document_text())

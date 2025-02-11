@@ -1,26 +1,7 @@
-from typing import Annotated, List, TypedDict
+from typing import Annotated, List, Dict, TypedDict, Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum
-import operator
 
-class Section(BaseModel):
-    name: str = Field(
-        description="Name for this section of the report.",
-    )
-    description: str = Field(
-        description="Brief overview of the main topics and concepts to be covered in this section.",
-    )
-    research: bool = Field(
-        description="Whether to perform web research for this section of the report."
-    )
-    content: str = Field(
-        description="The content of the section."
-    )   
-
-class Sections(BaseModel):
-    sections: List[Section] = Field(
-        description="Sections of the report.",
-    )
 
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Query for web search.")
@@ -30,32 +11,35 @@ class Queries(BaseModel):
         description="List of search queries.",
     )
 
+class SearchResult(BaseModel):
+    """Structure for search results"""
+    query: str
+    section_name: str
+    description: str
+    results: List[Dict[str, str]]  # Note: all values must be strings
+
+class DepositionSection(BaseModel):
+    """Structure for a deposition section"""
+    name: str
+    description: str
+    queries: List[str]
+    investigation: bool = True
+
 class ReportStateInput(TypedDict):
-    topic: str # Report topic
-    feedback_on_report_plan: str # Feedback on the report structure from review
-    accept_report_plan: bool  # Whether to accept or reject the report plan
+    topic: str  # Deposition topic
+    feedback_on_report_plan: str  # Feedback on the report structure
+    accept_report_plan: bool  # Whether to accept the report plan
     
 class ReportStateOutput(TypedDict):
-    final_report: str # Final report
-    status: Annotated[str, lambda a, b: b] # Current workflow status
+    final_report: str  # Final markdown report
+    status: Annotated[str, lambda a, b: b]  # Current workflow status
 
 class ReportState(TypedDict):
-    topic: str # Report topic    
-    feedback_on_report_plan: str # Feedback on the report structure from review
+    topic: str  # Deposition topic    
+    feedback_on_report_plan: str  # Feedback on the report structure from review
     accept_report_plan: bool  # Whether to accept or reject the report plan
-    sections: list[Section] # List of report sections 
-    completed_sections: Annotated[list, operator.add] # Send() API key
-    report_sections_from_research: str # String of any completed sections from research to write final sections
-    final_report: str # Final report
-    status: Annotated[str, lambda a, b: b] # Current workflow status
-class SectionState(TypedDict):
-    section: Section # Report section   
-    search_queries: list[SearchQuery] # List of search queries
-    source_str: str # String of formatted source content from web search
-    report_sections_from_research: str # String of any completed sections from research to write final sections
-    completed_sections: list[Section] # Final key we duplicate in outer state for Send() API
-    status: Annotated[str, lambda a, b: b] # Current workflow status
-
-class SectionOutputState(TypedDict):
-    completed_sections: list[Section] # Final key we duplicate in outer state for Send() API
-    status: Annotated[str, lambda a, b: b] # Current workflow status
+    sections: List[Dict]  # List of structured sections
+    search_results: List[Dict]  # Vector search results
+    complaint_text: str  # Full text of the complaint
+    final_report: str  # Final markdown report
+    status: Annotated[str, lambda a, b: b]  # Current workflow status

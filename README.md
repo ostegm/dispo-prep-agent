@@ -1,19 +1,17 @@
 # Depo Prep Agent
 
-Depo Prep Agent is an open-source research assistant that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
+Depo Prep Agent is an agent that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
 
 Key features:
-- Uses Google's Gemini model for OCR and document chunking
-- Leverages Chroma vector database for semantic search of case documents
-- Enables human review and iteration of the deposition plan
-- Parallelizes research across multiple deposition topics
-- Produces well-formatted markdown deposition outlines
-- Supports customizable models, prompts, and deposition structure
+- Semantic search of case documents using Chroma vector database
+- Human review and iteration of deposition plans
+- Parallel processing of search queries
+- Well-formatted markdown deposition outlines
+- Customizable models, prompts, and deposition structure
 
 ## 🚀 Quickstart
 
 1. Clone the repository:
-
 
 2. Set up your environment:
 ```bash
@@ -85,26 +83,26 @@ python -m tests.test_deposition_agent
    - Chunks are embedded and stored in Chroma
 
 2. **Deposition Planning**
-   - System analyzes the deposition topic and generates structured sections
-   - Each section is marked for investigation if it requires document research
-   - Human review/feedback can be provided on the plan
+   - Gemini analyzes the topic and generates structured sections
+   - Each section includes targeted search queries
+   - Human review/feedback loop available
 
 3. **Document Research**
-   - System generates semantic search queries for each section
-   - Queries are run against the vector database
-   - Relevant document chunks are retrieved and deduplicated
+   - System runs parallel semantic searches for each query
+   - Results are structured and organized by section
+   - Relevant document chunks are retrieved
 
 4. **Content Generation**
-   - System writes questions for each section using retrieved documents
-   - Background sections are written with standard questions
-   - Final sections combine insights from research
+   - Claude compiles search results into a structured report
+   - Gemini generates specific deposition questions
+   - Final output combines document insights with expert questioning
 
 ## 🔧 Customization
 
 The system can be customized through:
-- `src/depo_prep/configuration.py`: Model selection, chunk sizes, etc.
+- `src/depo_prep/configuration.py`: Model selection and search parameters
 - `src/depo_prep/prompts.py`: Instructions for each step
-- `DEFAULT_DEPOSITION_STRUCTURE`: Organization of the deposition
+- `src/depo_prep/state.py`: Data structures and state management
 
 ## 🧪 Testing
 
@@ -120,13 +118,9 @@ python -m tests.test_chroma_index
 python -m tests.test_deposition_agent
 ```
 
-
-
 ## Next Steps
 
-- Fix the local testing script - it works when I use langgraph.
-- Incorporate feedback on the plan from human review (in prompt)
-- Investigate chunking vs sending all documents with the initial planning step.
-- Figure out if we really need to fan out to sections or can we just do it as one step?
+- Cleanup use of configurable in graph.py
+- Use send api for section json formatting https://github.com/langchain-ai/report-mAIstro/blob/4751052afb78df50a0275e1ed7c5e45940bbb1ed/src/report_maistro/graph.py#L128C1-L147C10
 - Convert my back medical record summary to a injury related to this case and index. 
 - Checkout email from Nick https://mail.google.com/mail/u/0/#inbox/FMfcgzQZTCjdhFBklTDhxZQBJFsvFBjt
