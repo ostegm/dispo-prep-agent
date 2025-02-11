@@ -23,12 +23,11 @@ class DepositionSection(BaseModel):
     name: str
     description: str
     queries: List[str]
-    investigation: bool = True
 
 class ReportStateInput(TypedDict):
     topic: str  # Deposition topic
-    feedback_on_report_plan: str  # Feedback on the report structure
-    accept_report_plan: bool  # Whether to accept the report plan
+    feedback_on_plan: str  # Feedback on the report structure
+    accept_plan: bool  # Whether to accept the report plan
     
 class ReportStateOutput(TypedDict):
     final_report: str  # Final markdown report
@@ -36,8 +35,8 @@ class ReportStateOutput(TypedDict):
 
 class ReportState(TypedDict):
     topic: str  # Deposition topic    
-    feedback_on_report_plan: str  # Feedback on the report structure from review
-    accept_report_plan: bool  # Whether to accept or reject the report plan
+    feedback_on_plan: str  # Feedback on the report structure from review
+    accept_plan: bool  # Whether to accept or reject the report plan
     sections: List[Dict]  # List of structured sections
     search_results: List[Dict]  # Vector search results
     complaint_text: str  # Full text of the complaint

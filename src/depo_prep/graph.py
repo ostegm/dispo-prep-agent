@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 from langchain_anthropic import ChatAnthropic 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,6 +13,8 @@ from src.depo_prep import prompts
 from src.depo_prep.configuration import Configuration
 from src.depo_prep import utils
 
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Initialize configuration and models
 config = Configuration()
@@ -26,7 +29,7 @@ writer_model = ChatAnthropic(
 )
 
 # Nodes
-async def generate_report_plan(state: ReportState, config: RunnableConfig) -> ReportState:
+async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
     """Generate initial deposition plan."""
     configurable = Configuration.from_runnable_config(config)
     # Fetch complaint text
@@ -34,8 +37,8 @@ async def generate_report_plan(state: ReportState, config: RunnableConfig) -> Re
     
     # Prepare feedback context if it exists
     feedback_context = ""
-    if state.get("feedback_on_report_plan"):
-        feedback_context = f"Based on previous feedback: {state['feedback_on_report_plan']}"
+    if state.get("feedback_on_plan"):
+        feedback_context = f"Based on previous feedback: {state['feedback_on_plan']}"
     
     # Format system instructions
     system_instructions = prompts.deposition_planner_instructions.format(
@@ -92,27 +95,45 @@ Format the output as a JSON object with these exact fields."""),
 
 def human_feedback(state: ReportState):
     """ No-op node that should be interrupted on """
+    logger.info("Entering human feedback node")
+    logger.info(f"Current state keys: {state.keys()}")
+    logger.info(f"Full state: {state}")
+    
     state["status"] = "awaiting_feedback"
     return state
 
+
+def maybe_regenerate_report_plan(state: ReportState):
+    """Conditional routing based on feedback and plan acceptance status"""    
+        
+    feedback = state.get("feedback_on_plan", None)
+    plan_accepted = state.get("accept_plan", False)
+    
+    logger.info("Checking feedback status:")
+    logger.info(f"Feedback received: {feedback}")
+    logger.info(f"Plan acceptance status: {plan_accepted}")
+
+    if not plan_accepted:
+        if not feedback:
+            raise ValueError("Plan not accepted, but no feedback received")
+        return "generate_deposition_plan"
+    
+    return "gather_search_results"
+
 def compile_final_report(state: ReportState):
     """ Compile the final deposition outline """    
-    # Update status
     state["status"] = "compiling_report"
 
-    # Get sections and completed sections from state
     sections = state["sections"]
     completed_sections = state.get("completed_sections", [])
     
-    print("\nCompiling final report...")
-    print(f"Found {len(sections)} total sections")
-    print(f"Found {len(completed_sections)} completed sections")
+    logger.info("\nCompiling final report...")
+    logger.info(f"Found {len(sections)} total sections")
+    logger.info(f"Found {len(completed_sections)} completed sections")
     
-    # Create a mapping of section names to their content
     section_content_map = {s["name"]: s.get("content", "") for s in completed_sections}
-    print(f"Section names with content: {list(section_content_map.keys())}")
+    logger.info(f"Section names with content: {list(section_content_map.keys())}")
     
-    # Update sections with completed content while maintaining original order
     final_sections = []
     for section in sections:
         section_name = section["name"]
@@ -120,22 +141,21 @@ def compile_final_report(state: ReportState):
             section["content"] = section_content_map[section_name]
             final_sections.append(section)
         else:
-            print(f"Warning: No content found for section {section_name}")
+            logger.warning(f"No content found for section {section_name}")
     
-    # Compile final report
     if not final_sections:
-        print("Warning: No sections with content found")
+        logger.warning("No sections with content found")
         state["status"] = "error"
         return {"final_report": "", "status": "error"}
         
     all_sections = "\n\n".join([s["content"] for s in final_sections if s.get("content")])
     
     if not all_sections:
-        print("Warning: No content found in any sections")
+        logger.warning("No content found in any sections")
         state["status"] = "error"
         return {"final_report": "", "status": "error"}
         
-    print(f"\nSuccessfully compiled final report with {len(final_sections)} sections")
+    logger.info(f"\nSuccessfully compiled final report with {len(final_sections)} sections")
     state["status"] = "completed"
     return {"final_report": all_sections, "status": "completed"}
 
@@ -146,7 +166,6 @@ async def gather_search_results(
 ) -> ReportState:
     """Gather all vector search results into structured format."""
     configurable = Configuration.from_runnable_config(config)
-    complaint_text = state.get("complaint_text", "")
     
     # Gather all searches in parallel
     search_tasks = []
@@ -230,22 +249,19 @@ async def generate_deposition_questions(
 builder = StateGraph(ReportState, input=ReportStateInput, output=ReportStateOutput, config_schema=Configuration)
 
 # Core nodes
-builder.add_node("generate_report_plan", generate_report_plan)
+builder.add_node("generate_deposition_plan", generate_deposition_plan)
 builder.add_node("human_feedback", human_feedback)
 builder.add_node("gather_search_results", gather_search_results)
 builder.add_node("compile_markdown_report", compile_markdown_report)
 builder.add_node("generate_deposition_questions", generate_deposition_questions)
 
 # Add edges for main flow
-builder.add_edge(START, "generate_report_plan")
-builder.add_edge("generate_report_plan", "human_feedback")
+builder.add_edge(START, "generate_deposition_plan")
+builder.add_edge("generate_deposition_plan", "human_feedback")
 
-# Conditional edge for feedback loop
-builder.add_conditional_edges(
-    "human_feedback",
-    lambda state: "generate_report_plan" if False else "gather_search_results",
-    ["generate_report_plan", "gather_search_results"]
-)
+# Conditional edge for human feedback loop
+builder.add_conditional_edges("human_feedback", maybe_regenerate_report_plan,
+                              ["generate_deposition_plan", "gather_search_results"])
 
 # Continue with approved plan
 builder.add_edge("gather_search_results", "compile_markdown_report")
