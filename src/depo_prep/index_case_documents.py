@@ -14,6 +14,7 @@ from chromadb.config import Settings
 from langchain_google_genai import ChatGoogleGenerativeAI
 import re
 from dotenv import load_dotenv
+import argparse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -151,6 +152,18 @@ class DocumentProcessor:
             pdf_path: Path to the PDF file.
             max_pages: Maximum number of pages to process. If None, process all pages.
         """
+        pdf_name = os.path.basename(pdf_path)
+        
+        # Check if document has already been processed
+        existing_docs = self.collection.get(
+            where={"source": pdf_name},
+            limit=1
+        )
+        
+        if existing_docs and existing_docs['ids']:
+            print(f"\nSkipping {pdf_path} - already processed")
+            return
+            
         print(f"\nProcessing {pdf_path}...")
         
         # Convert PDF to images
@@ -216,6 +229,12 @@ class DocumentProcessor:
 
 async def main():
     """Main function to process all PDFs in the case_documents directory."""
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Process and index case documents.')
+    parser.add_argument('--clear', action='store_true', 
+                       help='Clear existing collection before processing documents')
+    args = parser.parse_args()
+    
     # Get the case_documents directory relative to the workspace root
     workspace_root = Path(__file__).parent.parent.parent
     case_docs_dir = workspace_root / "case_documents"
@@ -225,6 +244,13 @@ async def main():
     
     # Initialize processor
     processor = DocumentProcessor()
+    
+    # Clear collection if requested
+    if args.clear:
+        print("\nClearing existing collection...")
+        # Delete all documents by matching any source
+        processor.collection.delete(where={"source": {"$ne": ""}})
+        print("Collection cleared")
     
     # Process all PDFs
     pdf_files = list(case_docs_dir.glob("*.pdf"))

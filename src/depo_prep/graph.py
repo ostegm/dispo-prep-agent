@@ -116,8 +116,9 @@ def maybe_regenerate_report_plan(state: ReportState):
     if not plan_accepted:
         if not feedback:
             raise ValueError("Plan not accepted, but no feedback received")
+        state["status"] = "plan_rejected"
         return "generate_deposition_plan"
-    
+    state["status"] = "plan_accepted"
     return "gather_search_results"
 
 def compile_final_report(state: ReportState):

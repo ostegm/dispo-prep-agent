@@ -70,8 +70,8 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
                 },
                 "command": {
                     "update": {
-                        "feedback_on_report_plan": feedback or None,
-                        "accept_report_plan": accept_plan
+                        "feedback_on_plan": feedback or None,
+                        "accept_plan": accept_plan
                     },
                 }
             }
@@ -106,7 +106,6 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
         
         # Get current values and status
         values = data.get("values", {})
-        print(values)
         if values:
             status = values.get("status", "unknown")
             print(f"\nStatus: {status}")
@@ -143,8 +142,19 @@ async def test_deposition_workflow():
     reports_dir = Path(__file__).parent.parent / "reports"
     reports_dir.mkdir(exist_ok=True)
     
-    # Topic for the deposition
-    deposition_topic = "Prepare for a deposition of the defendant Luther about the human factors and decisions that led to the crash, focusing on their state of mind, awareness of risks, and actions taken before and during the incident"
+    # Default deposition topic
+    default_topic = "Prepare for a deposition of the defendant Luther about the human factors and decisions that led to the crash, focusing on their state of mind, awareness of risks, and actions taken before and during the incident"
+    
+    # Ask user for topic, use default if blank
+    print("\nDefault deposition topic:")
+    print(default_topic)
+    deposition_topic = input("\nEnter deposition topic (or press Enter to use default): ").strip()
+    
+    if not deposition_topic:
+        deposition_topic = default_topic
+        print("\nUsing default topic")
+    
+    print(f"\nProceeding with topic:\n{deposition_topic}")
     
     # Create input state
     input_state = {
