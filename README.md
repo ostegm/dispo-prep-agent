@@ -119,5 +119,7 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Go deeper on how to use studio and playground for debugging prompts
+- Focus on expert deposition - reason for deposition + expert report
+- Add a step before generating plan where we clarify the topic with the user
+- Investigate hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
 - Some additional features Key fact extraction ,Timeline analysis, Contradiction detection, Evidence linking, Context awareness

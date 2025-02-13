@@ -258,10 +258,13 @@ async def main():
         print("No PDF files found in case_documents directory")
         return
     
-    # Process all PDFs
-    for pdf_file in pdf_files:
-        await processor.process_document(str(pdf_file))
-    print("Successfully processed all documents")
+    # Process all PDFs in parallel
+    print(f"\nProcessing {len(pdf_files)} documents in parallel...")
+    await asyncio.gather(*[
+        processor.process_document(str(pdf_file))
+        for pdf_file in pdf_files
+    ])
+    print("\nSuccessfully processed all documents in parallel")
 
 if __name__ == "__main__":
     asyncio.run(main()) 
