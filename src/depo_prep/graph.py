@@ -2,12 +2,15 @@ import asyncio
 import json
 import logging
 import re
+from typing import Dict, List, TypedDict, Literal
 from langchain_anthropic import ChatAnthropic 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.chat_models import BaseChatModel as ChatModel
 from langgraph.graph import START, END, StateGraph
+from langgraph.constants import Send
+from langgraph.types import Command
 from src.depo_prep.state import ReportStateInput, ReportStateOutput, ReportState, DepositionSection, SearchResult
 from src.depo_prep import prompts
 from src.depo_prep.configuration import Configuration
@@ -28,12 +31,91 @@ writer_model = ChatAnthropic(
     temperature=0
 )
 
-# Nodes
+class SectionState(TypedDict):
+    raw_section: str
+    processed_section: Dict
+
+class SectionOutputState(TypedDict):
+    processed_section: Dict
+
+async def process_single_section(state: SectionState) -> SectionOutputState:
+    """Process a single section with retry logic."""
+    raw_section = state["raw_section"]
+    retry_count = 0
+    max_retries = 3
+    
+    structured_planner = writer_model.with_structured_output(DepositionSection)
+    
+    while retry_count <= max_retries:
+        try:
+            section_messages = [
+                SystemMessage(content=prompts.section_processor_prompt),
+                HumanMessage(content=raw_section)
+            ]
+            section_data = await structured_planner.ainvoke(section_messages)
+            return {"processed_section": section_data.model_dump()}
+        except Exception as e:
+            if "overloaded" in str(e).lower() and retry_count < max_retries:
+                # Exponential backoff
+                wait_time = 2 ** retry_count
+                logger.warning(f"API overloaded, retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+                retry_count += 1
+            else:
+                logger.error(f"Error processing section: {str(e)}")
+                return {
+                    "processed_section": {
+                        "name": "Error Processing Section",
+                        "description": "This section failed to process due to API overload.",
+                        "content": "Please try regenerating the plan."
+                    }
+                }
+    return {
+        "processed_section": {
+            "name": "Error Processing Section",
+            "description": "Maximum retries exceeded.",
+            "content": "Please try regenerating the plan."
+        }
+    }
+
+def initiate_section_processing(state: ReportState):
+    """Fan out to process sections in parallel using Send API."""
+    return [
+        Send("process_section", {"raw_section": section})
+        for section in state["raw_sections"]
+    ]
+
+def collect_processed_sections(state: ReportState) -> ReportState:
+    """Collect all processed sections and update the state."""
+    # Initialize completed_sections if not present
+    if "completed_sections" not in state:
+        state["completed_sections"] = []
+    
+    # Add the newly processed sections to completed_sections
+    if "process_section" in state:
+        state["completed_sections"].extend(state["process_section"])
+    
+    # Convert completed sections to final format
+    processed_sections = [s["processed_section"] for s in state["completed_sections"]]
+    state["sections"] = processed_sections
+    state["status"] = "plan_generated"
+    
+    logger.info(f"Collected {len(processed_sections)} processed sections")
+    return state
+
 async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
     """Generate initial deposition plan."""
     configurable = Configuration.from_runnable_config(config)
-    # Fetch complaint text
-    complaint_text = await utils.get_full_document_text(configurable.chroma_collection_name, "complaint.pdf")
+    
+    # Fetch all documents
+    logger.info("Fetching all documents from the vector database...")
+    all_documents = await utils.get_all_documents_text(configurable.chroma_collection_name)
+    
+    # Format all documents into a context string
+    context_parts = []
+    for filename, content in all_documents.items():
+        context_parts.append(f"### {filename}\n{content}\n")
+    all_context = "\n".join(context_parts)
     
     # Prepare feedback context if it exists
     feedback_context = ""
@@ -42,8 +124,8 @@ async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -
     
     # Format system instructions
     system_instructions = prompts.deposition_planner_instructions.format(
-        complaint_context=complaint_text,
-        topic=state["topic"],
+        complaint_context=all_context,
+        topic=state["user_provided_topic"],
         feedback_context=feedback_context,
         max_sections=configurable.max_sections,
         default_num_queries_per_section=configurable.default_num_queries_per_section
@@ -52,11 +134,19 @@ async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -
     # Generate outline
     messages = [
         SystemMessage(content=system_instructions),
-        HumanMessage(content="Generate a deposition outline based on the complaint and topic.")
-    ]
+        HumanMessage(content="Help me prepare for a depositon based on the provided documents and the topic.")]
     
     response = await planner_model.ainvoke(messages)
     raw_outline = response.content
+    
+    # Extract summary from the outline
+    summary_pattern = r"<summary>(.*?)</summary>"
+    summary_match = re.search(summary_pattern, raw_outline, re.DOTALL)
+    if not summary_match:
+        raise ValueError("No summary found in model response")
+    
+    # Store the summary in state
+    state["deposition_summary"] = summary_match.group(1).strip()
     
     # Extract sections from the outline using HTML tags
     section_pattern = r"<section>(.*?)</section>"
@@ -65,31 +155,9 @@ async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -
     if not raw_sections:
         raise ValueError("No sections found in model response")
     
-    # Convert each section to structured format using structured output
-    structured_planner = writer_model.with_structured_output(DepositionSection)
-    
-    async def process_section(raw_section: str):
-        section_messages = [
-            SystemMessage(content="""Convert this deposition section into a structured format with:
-- A name field as a brief title
-- A description field explaining the section
-- A queries field as a list of search queries (not a string)
-
-Format the output as a JSON object with these exact fields."""),
-            HumanMessage(content=raw_section)
-        ]
-        section_data = await structured_planner.ainvoke(section_messages)
-        return section_data.model_dump()
-    
-    # Process all sections in parallel
-    structured_sections = await asyncio.gather(
-        *[process_section(section) for section in raw_sections]
-    )
-    
-    # Update state with structured sections
-    state["sections"] = structured_sections
-    state["complaint_text"] = complaint_text
-    state["status"] = "plan_generated"
+    # Store raw sections for parallel processing
+    state["raw_sections"] = raw_sections
+    state["status"] = "sections_extracted"
     
     return state
 
@@ -113,106 +181,29 @@ def maybe_regenerate_report_plan(state: ReportState):
     logger.info(f"Feedback received: {feedback}")
     logger.info(f"Plan acceptance status: {plan_accepted}")
 
-    if not plan_accepted:
-        if not feedback:
-            raise ValueError("Plan not accepted, but no feedback received")
-        state["status"] = "plan_rejected"
-        return "generate_deposition_plan"
-    state["status"] = "plan_accepted"
-    return "gather_search_results"
-
-def compile_final_report(state: ReportState):
-    """ Compile the final deposition outline """    
-    state["status"] = "compiling_report"
-
-    sections = state["sections"]
-    completed_sections = state.get("completed_sections", [])
+    if plan_accepted:
+        state["status"] = "plan_accepted"
+        return "convert_sections_to_markdown"
     
-    logger.info("\nCompiling final report...")
-    logger.info(f"Found {len(sections)} total sections")
-    logger.info(f"Found {len(completed_sections)} completed sections")
+    # If not accepted, we must have feedback
+    if not feedback:
+        raise ValueError("Plan not accepted, but no feedback received")
     
-    section_content_map = {s["name"]: s.get("content", "") for s in completed_sections}
-    logger.info(f"Section names with content: {list(section_content_map.keys())}")
-    
-    final_sections = []
-    for section in sections:
-        section_name = section["name"]
-        if section_name in section_content_map:
-            section["content"] = section_content_map[section_name]
-            final_sections.append(section)
-        else:
-            logger.warning(f"No content found for section {section_name}")
-    
-    if not final_sections:
-        logger.warning("No sections with content found")
-        state["status"] = "error"
-        return {"final_report": "", "status": "error"}
-        
-    all_sections = "\n\n".join([s["content"] for s in final_sections if s.get("content")])
-    
-    if not all_sections:
-        logger.warning("No content found in any sections")
-        state["status"] = "error"
-        return {"final_report": "", "status": "error"}
-        
-    logger.info(f"\nSuccessfully compiled final report with {len(final_sections)} sections")
-    state["status"] = "completed"
-    return {"final_report": all_sections, "status": "completed"}
+    state["status"] = "regenerating_plan"
+    return "generate_deposition_plan"
 
 
-async def gather_search_results(
-    state: ReportState,
-    config: RunnableConfig
-) -> ReportState:
-    """Gather all vector search results into structured format."""
-    configurable = Configuration.from_runnable_config(config)
-    
-    # Gather all searches in parallel
-    search_tasks = []
-    for section in state["sections"]:
-        for query in section["queries"]:
-            search_tasks.append({
-                "section_name": section["name"],
-                "query": query,
-                "description": section["description"],
-                "task": utils.vector_db_search_async(configurable.chroma_collection_name, query)
-            })
-    
-    # Execute all searches concurrently
-    search_results = []
-    if search_tasks:
-        results = await asyncio.gather(*(task["task"] for task in search_tasks))
-        
-        # Format results into structured data
-        for task, result in zip(search_tasks, results):
-            search_results.append(SearchResult(
-                query=task["query"],
-                section_name=task["section_name"],
-                description=task["description"],
-                results=result
-            ).model_dump())
-    
-    # Store in state
-    state["sections"] = search_results
-    state["status"] = "searches_completed"
-    
-    return state
-
-async def compile_markdown_report(state: ReportState) -> ReportState:
+async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     """Convert search results and sections into formatted markdown."""
     
-    system_prompt = prompts.markdown_compiler_prompt
-
     # Prepare data for the writer
     data = {
-        "topic": state["topic"],
-        "complaint_text": state["complaint_text"],
+        "topic": state["deposition_summary"],
         "sections": state["sections"],
     }
     
     messages = [
-        SystemMessage(content=system_prompt),
+        SystemMessage(content=prompts.markdown_compiler_prompt),
         HumanMessage(content=f"Please create the markdown report using this data: {json.dumps(data, indent=2)}")
     ]
     
@@ -220,7 +211,7 @@ async def compile_markdown_report(state: ReportState) -> ReportState:
     response = await writer_model.ainvoke(messages)
     
     # Update state
-    state["final_report"] = response.content
+    state["markdown_document"] = response.content
     state["status"] = "markdown_compiled"
     
     return state
@@ -231,42 +222,61 @@ async def generate_deposition_questions(
     """Generate potential deposition questions based on the markdown report."""
     
     system_prompt = prompts.deposition_questions_prompt
+    human_message = """Given this deposition plan, generate appropriate questions:
+        {markdown_document}""".format(markdown_document=state["markdown_document"])
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Given this deposition plan, generate appropriate questions:\n\n{state['final_report']}")
+        HumanMessage(content=human_message)
     ]
     
     # Generate questions
     response = await planner_model.ainvoke(messages)
     
     # Update state with enhanced markdown
-    state["final_report"] = response.content
+    state["markdown_document"] = response.content
     state["status"] = "questions_added"
     
     return state
 
-# Add nodes
+# Section processing sub-graph
+section_builder = StateGraph(SectionState, output=SectionOutputState)
+section_builder.add_node("process_section", process_single_section)
+section_builder.add_edge(START, "process_section")
+section_builder.add_edge("process_section", END)
+
+# Main graph
 builder = StateGraph(ReportState, input=ReportStateInput, output=ReportStateOutput, config_schema=Configuration)
 
 # Core nodes
 builder.add_node("generate_deposition_plan", generate_deposition_plan)
+builder.add_node("process_section", section_builder.compile())
+builder.add_node("collect_sections", collect_processed_sections)
 builder.add_node("human_feedback", human_feedback)
-builder.add_node("gather_search_results", gather_search_results)
-builder.add_node("compile_markdown_report", compile_markdown_report)
+builder.add_node("convert_sections_to_markdown", convert_sections_to_markdown)
 builder.add_node("generate_deposition_questions", generate_deposition_questions)
 
 # Add edges for main flow
 builder.add_edge(START, "generate_deposition_plan")
-builder.add_edge("generate_deposition_plan", "human_feedback")
+
+# Add conditional edges for parallel processing
+builder.add_conditional_edges(
+    "generate_deposition_plan",
+    initiate_section_processing,
+    ["process_section"]
+)
+builder.add_edge("process_section", "collect_sections")
+builder.add_edge("collect_sections", "human_feedback")
 
 # Conditional edge for human feedback loop
-builder.add_conditional_edges("human_feedback", maybe_regenerate_report_plan,
-                              ["generate_deposition_plan", "gather_search_results"])
+builder.add_conditional_edges(
+    "human_feedback",
+    maybe_regenerate_report_plan,
+    ["generate_deposition_plan", "convert_sections_to_markdown"]
+)
 
 # Continue with approved plan
-builder.add_edge("gather_search_results", "compile_markdown_report")
-builder.add_edge("compile_markdown_report", "generate_deposition_questions")
+builder.add_edge("convert_sections_to_markdown", "generate_deposition_questions")
 builder.add_edge("generate_deposition_questions", END)
 
 # Compile graph with interruption points

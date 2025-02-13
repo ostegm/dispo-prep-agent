@@ -22,23 +22,25 @@ class DepositionSection(BaseModel):
     """Structure for a deposition section"""
     name: str
     description: str
-    queries: List[str]
+    content: str  # Contains relevant document quotes and their explanations
 
-class ReportStateInput(TypedDict):
-    topic: str  # Deposition topic
+class ReportStateInput(TypedDict, total=False):
+    user_provided_topic: str  # Deposition topic
     feedback_on_plan: str  # Feedback on the report structure
     accept_plan: bool  # Whether to accept the report plan
-    
+
 class ReportStateOutput(TypedDict):
     final_report: str  # Final markdown report
     status: Annotated[str, lambda a, b: b]  # Current workflow status
 
-class ReportState(TypedDict):
-    topic: str  # Deposition topic    
+class ReportState(TypedDict, total=False):
+    user_provided_topic: str  # Original deposition topic from user
+    deposition_summary: str  # AI-generated summary of goals and strategy
     feedback_on_plan: str  # Feedback on the report structure from review
     accept_plan: bool  # Whether to accept or reject the report plan
     sections: List[Dict]  # List of structured sections
-    search_results: List[Dict]  # Vector search results
+    raw_sections: List[str]  # Raw sections before processing
+    completed_sections: List[Dict]  # Results from parallel section processing
     complaint_text: str  # Full text of the complaint
-    final_report: str  # Final markdown report
+    markdown_document: str  # markdown report
     status: Annotated[str, lambda a, b: b]  # Current workflow status
