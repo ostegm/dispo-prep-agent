@@ -58,7 +58,7 @@ async def create_thread() -> str:
         response.raise_for_status()
         return response.json()["thread_id"]
 
-async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str, assistant_id: str, checkpoint: Dict[str, Any]) -> None:
+async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str, assistant_id: str) -> None:
     """Resume the workflow after human feedback."""
     # Get user input for feedback
     feedback = input("\nEnter feedback on the plan (press Enter to accept without feedback): ").strip()
@@ -69,7 +69,7 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
     print(f"Feedback: {feedback}")
     
     try:
-        # Update the thread state with feedback, including the checkpoint
+        # Update the thread state with feedback.
         state_response = await client.post(
             f"{LANGGRAPH_API_URL}/threads/{thread_id}/state",
             json={
@@ -78,7 +78,6 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
                     "accept_plan": accept_plan,
                 },
                 "as_node": "human_feedback",
-                # "checkpoint": checkpoint
             }
         )
         state_response.raise_for_status()
@@ -88,14 +87,12 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
             f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs/stream",
             json={
                 "assistant_id": assistant_id,
-                "checkpoint": checkpoint,
                 "command": {
-                    "resume": {  # Pass the feedback as resume data
-                        "feedback": feedback or None,
+                    "resume": {
+                        "feedback": feedback,
                         "accept": accept_plan
                     }
                 },
-                "interrupt_before": ["human_feedback"],
                 "stream_mode": ["values", "events"]
             }
         )
@@ -174,15 +171,9 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
             print(f"Waiting at: {next_nodes}")
             
             if "human_feedback" in next_nodes:
-                # Get the current checkpoint from the state
-                checkpoint = data.get("checkpoint")
-                if not checkpoint:
-                    print("\nWarning: No checkpoint found in state, using thread_id only")
-                    checkpoint = {"thread_id": thread_id}
-                
                 # Only ask for feedback if we haven't just processed feedback
                 print("Attempting to resume after human feedback...")
-                await resume_after_human_feedback(client, thread_id, assistant_id, checkpoint)
+                await resume_after_human_feedback(client, thread_id, assistant_id)
                 
         await asyncio.sleep(2)
 
@@ -221,7 +212,7 @@ async def test_deposition_workflow():
     reports_dir.mkdir(exist_ok=True)
     
     # Default deposition topic
-    default_topic = "As the plaintiff's attorney, prepare for a deposition of the eyewitness to the accident. The goal is to explore factors that may affect the witness's reliability, including their vantage point, lighting conditions, distractions, potential biases, etc."
+    default_topic = "(TERMINAL) As the plaintiff's attorney, prepare for a deposition of the eyewitness to the accident. The goal is to explore factors that may affect the witness's reliability, including their vantage point, lighting conditions, distractions, potential biases, etc."
     
     # Ask user for topic, use default if blank
     print("\nDefault deposition topic:")

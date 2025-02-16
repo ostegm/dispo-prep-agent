@@ -174,7 +174,7 @@ def human_feedback(state: ReportState):
 def maybe_regenerate_report_plan(state: ReportState):
     """Conditional routing based on feedback and plan acceptance status"""    
         
-    feedback = state.get("feedback_on_plan", None)
+    feedback = state.get("feedback_on_plan", "")
     plan_accepted = state.get("accept_plan", False)
     
     logger.info("Checking feedback status:")
@@ -186,7 +186,8 @@ def maybe_regenerate_report_plan(state: ReportState):
         return "convert_sections_to_markdown"
     
     # If not accepted, we must have feedback
-    if not feedback:
+    if not plan_accepted and not feedback:
+        state["status"] = "ERROR: Plan not accepted, but no feedback received"
         raise ValueError("Plan not accepted, but no feedback received")
     
     state["status"] = "regenerating_plan"
