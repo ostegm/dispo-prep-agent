@@ -1,6 +1,7 @@
 from typing import Annotated, List, Dict, TypedDict, Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum
+import operator
 
 
 class SearchQuery(BaseModel):
@@ -38,9 +39,7 @@ class ReportState(TypedDict, total=False):
     deposition_summary: str  # AI-generated summary of goals and strategy
     feedback_on_plan: str  # Feedback on the report structure from review
     accept_plan: bool  # Whether to accept or reject the report plan
-    sections: List[Dict]  # List of structured sections
     raw_sections: List[str]  # Raw sections before processing
-    completed_sections: List[Dict]  # Results from parallel section processing
-    complaint_text: str  # Full text of the complaint
+    processed_section: Annotated[List[Dict], operator.add]  # Results from parallel section processing
     markdown_document: str  # markdown report
     status: Annotated[str, lambda a, b: b]  # Current workflow status

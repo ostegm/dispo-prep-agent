@@ -44,7 +44,7 @@ async def process_single_section(state: SectionState) -> SectionOutputState:
     retry_count = 0
     max_retries = 3
     
-    structured_planner = writer_model.with_structured_output(DepositionSection)
+    structured_writer = writer_model.with_structured_output(DepositionSection)
     
     while retry_count <= max_retries:
         try:
@@ -52,8 +52,8 @@ async def process_single_section(state: SectionState) -> SectionOutputState:
                 SystemMessage(content=prompts.section_processor_prompt),
                 HumanMessage(content=raw_section)
             ]
-            section_data = await structured_planner.ainvoke(section_messages)
-            return {"processed_section": section_data.model_dump()}
+            section_data = await structured_writer.ainvoke(section_messages)
+            return {"processed_section": [section_data.model_dump()]}
         except Exception as e:
             if "overloaded" in str(e).lower() and retry_count < max_retries:
                 # Exponential backoff
@@ -63,44 +63,28 @@ async def process_single_section(state: SectionState) -> SectionOutputState:
                 retry_count += 1
             else:
                 logger.error(f"Error processing section: {str(e)}")
-                return {
-                    "processed_section": {
-                        "name": "Error Processing Section",
-                        "description": "This section failed to process due to API overload.",
-                        "content": "Please try regenerating the plan."
-                    }
-                }
-    return {
-        "processed_section": {
-            "name": "Error Processing Section",
-            "description": "Maximum retries exceeded.",
-            "content": "Please try regenerating the plan."
-        }
-    }
+                return {"processed_section": []}
+    logging.info("Error!!! Returning empty processed section....")
+    return {"processed_section": []}
 
 def initiate_section_processing(state: ReportState):
     """Fan out to process sections in parallel using Send API."""
-    return [
-        Send("process_section", {"raw_section": section})
-        for section in state["raw_sections"]
-    ]
+    to_send = []
+    for raw_section in state["raw_sections"]:
+        to_send.append(Send("process_single_section", {"raw_section": raw_section}))
+    return to_send
 
 def collect_processed_sections(state: ReportState) -> ReportState:
     """Collect all processed sections and update the state."""
     # Initialize completed_sections if not present
-    if "completed_sections" not in state:
-        state["completed_sections"] = []
-    
-    # Add the newly processed sections to completed_sections
-    if "process_section" in state:
-        state["completed_sections"].extend(state["process_section"])
-    
-    # Convert completed sections to final format
-    processed_sections = [s["processed_section"] for s in state["completed_sections"]]
-    state["sections"] = processed_sections
+    processed_sections = state.get("processed_section", [])
+
+    if not processed_sections:
+        raise ValueError("processed_section not found in state")
+
     state["status"] = "plan_generated"
-    
-    logger.info(f"Collected {len(processed_sections)} processed sections")
+
+    logger.info(f"Collected {len(state['processed_section'])} processed sections")
     return state
 
 async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
@@ -200,7 +184,7 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     # Prepare data for the writer
     data = {
         "topic": state["deposition_summary"],
-        "sections": state["raw_sections"],
+        "sections": state["processed_section"],
     }
     
     messages = [
@@ -242,9 +226,9 @@ async def add_deposition_questions(
 
 # Section processing sub-graph
 section_builder = StateGraph(SectionState, output=SectionOutputState)
-section_builder.add_node("process_section", process_single_section)
-section_builder.add_edge(START, "process_section")
-section_builder.add_edge("process_section", END)
+section_builder.add_node("process_single_section", process_single_section)
+section_builder.add_edge(START, "process_single_section")
+section_builder.add_edge("process_single_section", END)
 
 # Main graph
 builder = StateGraph(ReportState, input=ReportStateInput, output=ReportStateOutput, config_schema=Configuration)
