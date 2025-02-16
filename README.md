@@ -119,8 +119,6 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Finish fixing the cli script. Getting close to working (seems like we aren't showing the right output in the cli and maybe not providing the right state update?)
-https://smith.langchain.com/o/8c235679-4f11-4f7f-a33e-2e06edd260bf/projects/p/52c25cf3-1408-48d7-bc93-083a70394952/t/db5d2fbc-c2d7-44a5-a45a-2ebc3b570a06
-- Add a step before generating plan where we propose the plan and get input to clarify the goals with the user (why are we deposing, what facts are we trying to expose, how many questions and sections are we trying to generate)
-  - This should be a second turn in the same prompt so we dont lose the context of the previous steps.
+- Finish fixing the cli script - why did it throw this error? `RuntimeError: Task failed with error: InvalidUpdateError('Invalid node name process_single_section in packet'), full task above.`
+- Make human feedback work as intended. It should be a second turn in the same prompt so we dont lose the context of the previous steps.
 - Investigate hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
