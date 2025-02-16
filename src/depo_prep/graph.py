@@ -200,7 +200,7 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     # Prepare data for the writer
     data = {
         "topic": state["deposition_summary"],
-        "sections": state["sections"],
+        "sections": state["raw_sections"],
     }
     
     messages = [
@@ -209,15 +209,15 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     ]
     
     # Generate markdown
-    response = await writer_model.ainvoke(messages)
-    
+    response = writer_model.invoke(messages)
+
     # Update state
     state["markdown_document"] = response.content
     state["status"] = "markdown_compiled"
     
     return state
 
-async def generate_deposition_questions(
+async def add_deposition_questions(
     state: ReportState,
 ) -> ReportState:
     """Generate potential deposition questions based on the markdown report."""
@@ -255,7 +255,7 @@ builder.add_node("process_section", section_builder.compile())
 builder.add_node("collect_sections", collect_processed_sections)
 builder.add_node("human_feedback", human_feedback)
 builder.add_node("convert_sections_to_markdown", convert_sections_to_markdown)
-builder.add_node("generate_deposition_questions", generate_deposition_questions)
+builder.add_node("add_deposition_questions", add_deposition_questions)
 
 # Add edges for main flow
 builder.add_edge(START, "generate_deposition_plan")
@@ -277,8 +277,8 @@ builder.add_conditional_edges(
 )
 
 # Continue with approved plan
-builder.add_edge("convert_sections_to_markdown", "generate_deposition_questions")
-builder.add_edge("generate_deposition_questions", END)
+builder.add_edge("convert_sections_to_markdown", "add_deposition_questions")
+builder.add_edge("add_deposition_questions", END)
 
 # Compile graph with interruption points
 graph = builder.compile(interrupt_before=['human_feedback'])
