@@ -58,7 +58,7 @@ async def create_thread() -> str:
         response.raise_for_status()
         return response.json()["thread_id"]
 
-async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str, assistant_id: str) -> None:
+async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str, assistant_id: str, checkpoint: Dict[str, Any]) -> None:
     """Resume the workflow after human feedback."""
     # Get user input for feedback
     feedback = input("\nEnter feedback on the plan (press Enter to accept without feedback): ").strip()
@@ -67,24 +67,41 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
     print(f"\n{'Accepting' if accept_plan else 'Rejecting'} plan{' with feedback' if feedback else ''}...")
     print(f"Accept plan: {accept_plan}")
     print(f"Feedback: {feedback}")
+    
     try:
+        # Update the thread state with feedback, including the checkpoint
+        state_response = await client.post(
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/state",
+            json={
+                "values": {
+                    "feedback_on_plan": feedback or None,
+                    "accept_plan": accept_plan,
+                },
+                "as_node": "human_feedback",
+                # "checkpoint": checkpoint
+            }
+        )
+        state_response.raise_for_status()
+        
+        # Resume the run with the updated state using the streaming endpoint
         response = await client.post(
-            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs",
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs/stream",
             json={
                 "assistant_id": assistant_id,
-                "checkpoint": {
-                    "thread_id": thread_id,
-                },
+                "checkpoint": checkpoint,
                 "command": {
-                    "update": {
-                        "feedback_on_plan": feedback or None,
-                        "accept_plan": accept_plan
-                    },
-                }
+                    "resume": {  # Pass the feedback as resume data
+                        "feedback": feedback or None,
+                        "accept": accept_plan
+                    }
+                },
+                "interrupt_before": ["human_feedback"],
+                "stream_mode": ["values", "events"]
             }
         )
         response.raise_for_status()
         print("Successfully resumed workflow")
+        
     except httpx.HTTPStatusError as e:
         print(f"\nError resuming workflow: {e.response.status_code} {e.response.text}")
         print(f"Request URL: {e.request.url}")
@@ -101,33 +118,55 @@ def format_plan(sections: list[dict]) -> str:
     for i, section in enumerate(sections, 1):
         plan.append(f"{i}. {section['name']}")
         plan.append(f"   Description: {section['description']}")
-        plan.append(f"   Research needed: {'Yes' if section.get('investigation') else 'No'}")
+        plan.append(f"   Content: {section['content']}")
         plan.append("")
     return "\n".join(plan)
 
 async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant_id: str) -> Dict[str, Any]:
     """Poll thread state until completion."""
+    last_status = None  # Track the last status to detect loops
+    
     while True:
         response = await client.get(f"{LANGGRAPH_API_URL}/threads/{thread_id}/state")
         data = response.json()
+        print("--- Current State ---")
+        print(data)
+        print("--- End State ---")
+        # Check for errors first
+        if "error" in data:
+            error_msg = data["error"]
+            print("\nError in workflow:")
+            print("=" * 80)
+            print(error_msg)
+            print("=" * 80)
+            raise RuntimeError(f"Workflow failed: {error_msg}")
         
         # Get current values and status
         values = data.get("values", {})
         if values:
-            status = values.get("status", "unknown")
+            status = values.get("status", "unknown")            
             print(f"\nStatus: {status}")
             
-            # If we have sections and we're at plan review stage, display the plan
-            if status == "plan_generated" and values.get("sections"):
-                print("\nProposed Plan:")
+            # If we're at plan review stage, always display the plan status
+            if status == "plan_generated":
+                print("\nProposed deposition_summary:")
                 print("=" * 80)
-                plan = format_plan(values["sections"])
-                print(plan)
+                deposition_summary = values.get("deposition_summary", "")
+                if not deposition_summary:
+                    raise ValueError("Warning: Expected deposition_summary in state but found none. This may indicate an error.")
+                print(deposition_summary)
                 print("=" * 80)
             
             # Check if we have a final report
-            if values.get("final_report"):
+            if values.get("markdown_document"):
                 return values
+        
+        # Check run status
+        tasks = data.get("tasks", [])
+        for task in tasks:
+            if task.get("error"):
+                print(f"Error in task: {task}")
+                raise RuntimeError(f"Task failed with error: {task['error']}, full task above.")
                 
         # Show what nodes we're waiting on
         next_nodes = data.get("next", [])
@@ -135,8 +174,16 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
             print(f"Waiting at: {next_nodes}")
             
             if "human_feedback" in next_nodes:
-                await resume_after_human_feedback(client, thread_id, assistant_id)
-            
+                # Get the current checkpoint from the state
+                checkpoint = data.get("checkpoint")
+                if not checkpoint:
+                    print("\nWarning: No checkpoint found in state, using thread_id only")
+                    checkpoint = {"thread_id": thread_id}
+                
+                # Only ask for feedback if we haven't just processed feedback
+                print("Attempting to resume after human feedback...")
+                await resume_after_human_feedback(client, thread_id, assistant_id, checkpoint)
+                
         await asyncio.sleep(2)
 
 async def test_deposition_workflow():
@@ -174,7 +221,7 @@ async def test_deposition_workflow():
     reports_dir.mkdir(exist_ok=True)
     
     # Default deposition topic
-    default_topic = "Prepare for a deposition of the defendant Luther about the human factors and decisions that led to the crash, focusing on their state of mind, awareness of risks, and actions taken before and during the incident"
+    default_topic = "As the plaintiff's attorney, prepare for a deposition of the eyewitness to the accident. The goal is to explore factors that may affect the witness's reliability, including their vantage point, lighting conditions, distractions, potential biases, etc."
     
     # Ask user for topic, use default if blank
     print("\nDefault deposition topic:")
@@ -189,9 +236,9 @@ async def test_deposition_workflow():
     
     # Create input state
     input_state = {
-        "topic": deposition_topic,
-        "feedback_on_report_plan": None,
-        "accept_report_plan": False
+        "user_provided_topic": deposition_topic,
+        "feedback_on_plan": None,
+        "accept_plan": False
     }
     
     # Get or create assistant
@@ -203,38 +250,37 @@ async def test_deposition_workflow():
     print(f"\nCreated thread: {thread_id}")
     
     async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
-        # Start the workflow
+        # Start the conversation by submitting the initial topic using the streaming endpoint
         run_response = await client.post(
-            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs",
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/runs/stream",
             json={
                 "assistant_id": assistant_id,
                 "input": input_state,
-                "config": {"configurable": config.model_dump()}
+                "config": {"configurable": config.model_dump()},
+                "interrupt_before": ["human_feedback"],
+                "stream_mode": ["values", "events"],
+                "stream_subgraphs": True
             }
         )
         run_response.raise_for_status()
-        print("\nStarted workflow, polling for results...")
+        print("\nInitial run started. Streaming updates will be polled...")
         
-        # Poll until completion
-        try:
-            final_result = await poll_thread_state(client, thread_id, assistant_id)
-            if final_result.get("final_report"):
-                print("\nFinal Report:")
-                print("=" * 80)
-                print(final_result["final_report"])
-                print("=" * 80)
-                
-                # Save report to reports directory
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_file = reports_dir / f"report_{timestamp}.md"
-                report_file.write_text(final_result["final_report"])
-                print(f"\nReport saved to: {report_file}")
-            else:
-                print("\nNo final report in results")
-                
-        except Exception as e:
-            print(f"Error: {e}")
-            raise
+        # Poll thread state until final report is available
+        final_result = await poll_thread_state(client, thread_id, assistant_id)
+        
+        if final_result.get("markdown_document"):
+            print("\nFinal Report:")
+            print("=" * 80)
+            print(final_result["markdown_document"])
+            print("=" * 80)
+            
+            # Save report to reports directory
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_file = reports_dir / f"report_{timestamp}.md"
+            report_file.write_text(final_result["markdown_document"])
+            print(f"\nReport saved to: {report_file}")
+        else:
+            print("\nNo final report in results")
 
 if __name__ == "__main__":
     asyncio.run(test_deposition_workflow()) 
