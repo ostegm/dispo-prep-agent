@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 
-from depo_prep.configuration import Configuration
+from src.depo_prep.configuration import Configuration
+from src.depo_prep.state import DepositionSection
 
 LANGGRAPH_API_URL = "http://localhost:2024"
 
@@ -39,7 +40,7 @@ async def get_or_create_assistant(graph_id: str) -> str:
             json={
                 "graph_id": graph_id,
                 "assistant_id": str(uuid.uuid4()),
-                "name": f"{graph_id.title()} Assistant"
+                "name": f"{graph_id.title()} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             }
         )
         response.raise_for_status()
@@ -116,9 +117,6 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
     while True:
         response = await client.get(f"{LANGGRAPH_API_URL}/threads/{thread_id}/state")
         data = response.json()
-        print("--- Current State ---")
-        print(data)
-        print("--- End State ---")
         # Check for errors first
         if "error" in data:
             error_msg = data["error"]
@@ -135,6 +133,13 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
             print(f"\nStatus: {status}")
             
             # If we're at plan review stage, always display the plan status
+            print(f"Found {len(values.get('processed_section', []))} processed sections.")
+            for section in values.get('processed_section', []):
+                section = DepositionSection(**section)
+                print(f"Section: {section.name}")
+                print(f"Description: {section.description}")
+                print("=" * 80)
+
             if status == "plan_generated":
                 print("\nProposed deposition_summary:")
                 print("=" * 80)

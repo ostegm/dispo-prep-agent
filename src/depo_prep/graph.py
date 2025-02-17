@@ -2,16 +2,14 @@ import asyncio
 import json
 import logging
 import re
-from typing import Dict, List, TypedDict, Literal
 from langchain_anthropic import ChatAnthropic 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.language_models.chat_models import BaseChatModel as ChatModel
 from langgraph.graph import START, END, StateGraph
 from langgraph.constants import Send
 from langgraph.types import Command
-from src.depo_prep.state import ReportStateInput, ReportStateOutput, ReportState, DepositionSection, SearchResult
+from src.depo_prep.state import ReportStateInput, ReportStateOutput, ReportState, DepositionSection, SectionState
 from src.depo_prep import prompts
 from src.depo_prep.configuration import Configuration
 from src.depo_prep import utils
@@ -31,16 +29,9 @@ writer_model = ChatAnthropic(
     temperature=0
 )
 
-class SectionState(TypedDict):
-    raw_section: str
-    processed_section: Dict
 
-class SectionOutputState(TypedDict):
-    processed_section: Dict
-
-async def process_single_section(state: SectionState) -> SectionOutputState:
+async def process_single_section(state: SectionState):
     """Process a single section with retry logic."""
-    raw_section = state["raw_section"]
     retry_count = 0
     max_retries = 3
     
@@ -50,10 +41,10 @@ async def process_single_section(state: SectionState) -> SectionOutputState:
         try:
             section_messages = [
                 SystemMessage(content=prompts.section_processor_prompt),
-                HumanMessage(content=raw_section)
+                HumanMessage(content=state["raw_section"])
             ]
             section_data = await structured_writer.ainvoke(section_messages)
-            return {"processed_section": [section_data.model_dump()]}
+            return {"processed_sections": [section_data]}
         except Exception as e:
             if "overloaded" in str(e).lower() and retry_count < max_retries:
                 # Exponential backoff
@@ -61,11 +52,8 @@ async def process_single_section(state: SectionState) -> SectionOutputState:
                 logger.warning(f"API overloaded, retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
                 retry_count += 1
-            else:
-                logger.error(f"Error processing section: {str(e)}")
-                return {"processed_section": []}
-    logging.info("Error!!! Returning empty processed section....")
-    return {"processed_section": []}
+    logging.error("Returning empty processed section....")
+    return {"processed_sections": []}
 
 def initiate_section_processing(state: ReportState):
     """Fan out to process sections in parallel using Send API."""
@@ -73,19 +61,6 @@ def initiate_section_processing(state: ReportState):
     for raw_section in state["raw_sections"]:
         to_send.append(Send("process_section", {"raw_section": raw_section}))
     return to_send
-
-def collect_processed_sections(state: ReportState) -> ReportState:
-    """Collect all processed sections and update the state."""
-    # Initialize completed_sections if not present
-    processed_sections = state.get("processed_section", [])
-
-    if not processed_sections:
-        raise ValueError("processed_section not found in state")
-
-    state["status"] = "plan_generated"
-
-    logger.info(f"Collected {len(state['processed_section'])} processed sections")
-    return state
 
 async def get_documents_for_context(configurable: Configuration):
     """Fetch all documents from the vector database."""
@@ -103,13 +78,14 @@ async def get_documents_for_context(configurable: Configuration):
 async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
     """Generate initial deposition plan."""
     configurable = Configuration.from_runnable_config(config)
+
     # Check if we are rebuilding the plan based on feedback from a previous turn.
     if state.get("feedback_on_plan"):
         logger.info("Feedback on plan found, adding feedback to the existing prompt.")
         existing_prompt_messages = state.get("deposition_plan_prompt", [])
         existing_prompt_messages.extend([
             AIMessage(content=state["deposition_summary"]),
-            HumanMessage(content=state["feedback_on_plan"])
+            HumanMessage(content=state["feedback_on_plan"] + " dont ask any followup questions, just follow the original instructions on formatting.")
         ])
         messages = existing_prompt_messages
     else:
@@ -177,9 +153,12 @@ def maybe_regenerate_report_plan(state: ReportState):
     
     # If not accepted, we must have feedback
     if not plan_accepted and not feedback:
-        state["status"] = "ERROR: Plan not accepted, but no feedback received"
         raise ValueError("Plan not accepted, but no feedback received")
     
+    # Clear any sections from previous turns.
+    state["processed_sections"].clear()
+    state["raw_sections"].clear()
+    logging.info("Cleared sections from previous turns.")
     state["status"] = "regenerating_plan"
     return "generate_deposition_plan"
 
@@ -190,7 +169,7 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     # Prepare data for the writer
     data = {
         "topic": state["deposition_summary"],
-        "sections": state["processed_section"],
+        "sections": [s.model_dump() for s in state["processed_sections"]],
     }
     
     messages = [
@@ -202,8 +181,10 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     response = writer_model.invoke(messages)
 
     # Update state
-    state["markdown_document"] = response.content
     state["status"] = "markdown_compiled"
+    state["markdown_document"] = response.content
+    # Try to avoid duplicating processed sections.
+    state["processed_sections"] = []
     
     return state
 
@@ -230,19 +211,14 @@ async def add_deposition_questions(
     
     return state
 
-# Section processing sub-graph
-section_builder = StateGraph(SectionState, output=SectionOutputState)
-section_builder.add_node("process_single_section", process_single_section)
-section_builder.add_edge(START, "process_single_section")
-section_builder.add_edge("process_single_section", END)
+
 
 # Main graph
 builder = StateGraph(ReportState, input=ReportStateInput, output=ReportStateOutput, config_schema=Configuration)
 
 # Core nodes
 builder.add_node("generate_deposition_plan", generate_deposition_plan)
-builder.add_node("process_section", section_builder.compile())
-builder.add_node("collect_sections", collect_processed_sections)
+builder.add_node("process_section", process_single_section)
 builder.add_node("human_feedback", human_feedback)
 builder.add_node("convert_sections_to_markdown", convert_sections_to_markdown)
 builder.add_node("add_deposition_questions", add_deposition_questions)
@@ -254,10 +230,9 @@ builder.add_edge(START, "generate_deposition_plan")
 builder.add_conditional_edges(
     "generate_deposition_plan",
     initiate_section_processing,
-    ["process_section"]
+    ["process_section"] 
 )
-builder.add_edge("process_section", "collect_sections")
-builder.add_edge("collect_sections", "human_feedback")
+builder.add_edge("process_section", "human_feedback")
 
 # Conditional edge for human feedback loop
 builder.add_conditional_edges(

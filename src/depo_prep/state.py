@@ -1,23 +1,7 @@
-from typing import Annotated, List, Dict, TypedDict, Optional, Any
-from pydantic import BaseModel, Field
-from enum import Enum
+from typing import Annotated, List, Dict, TypedDict, Any
+from pydantic import BaseModel
 import operator
 from langchain_core.messages import AnyMessage
-
-class SearchQuery(BaseModel):
-    search_query: str = Field(None, description="Query for web search.")
-
-class Queries(BaseModel):
-    queries: List[SearchQuery] = Field(
-        description="List of search queries.",
-    )
-
-class SearchResult(BaseModel):
-    """Structure for search results"""
-    query: str
-    section_name: str
-    description: str
-    results: List[Dict[str, str]]  # Note: all values must be strings
 
 class DepositionSection(BaseModel):
     """Structure for a deposition section"""
@@ -41,6 +25,13 @@ class ReportState(TypedDict, total=False):
     accept_plan: bool  # Whether to accept or reject the report plan
     deposition_plan_prompt: List[AnyMessage]
     raw_sections: List[str]  # Raw sections before processing
-    processed_section: Annotated[List[Dict], operator.add]  # Results from parallel section processing
+    processed_sections: Annotated[List[DepositionSection], operator.add]  # Results from parallel section processing
     markdown_document: str  # markdown report
     status: Annotated[str, lambda a, b: b]  # Current workflow status
+
+# Section processing sub-graph
+class SectionState(TypedDict):
+    raw_section: str
+    processed_section: DepositionSection
+
+
