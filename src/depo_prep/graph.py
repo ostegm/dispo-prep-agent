@@ -71,7 +71,7 @@ def initiate_section_processing(state: ReportState):
     """Fan out to process sections in parallel using Send API."""
     to_send = []
     for raw_section in state["raw_sections"]:
-        to_send.append(Send("process_single_section", {"raw_section": raw_section}))
+        to_send.append(Send("process_section", {"raw_section": raw_section}))
     return to_send
 
 def collect_processed_sections(state: ReportState) -> ReportState:
