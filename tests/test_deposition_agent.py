@@ -129,23 +129,27 @@ async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant
         # Get current values and status
         values = data.get("values", {})
         if values:
-            status = values.get("status", "unknown")            
-            print(f"\nStatus: {status}")
+            status = values.get("status", "unknown")
+            # Only print status if it changed
+            if status != last_status:
+                print(f"\nStatus: {status}")
+                last_status = status
             
-            # If we're at plan review stage, always display the plan status
-            print(f"Found {len(values.get('processed_section', []))} processed sections.")
-            for section in values.get('processed_section', []):
-                section = DepositionSection(**section)
-                print(f"Section: {section.name}")
-                print(f"Description: {section.description}")
-                print("=" * 80)
+            # Always show processed sections when they exist
+            processed_sections = values.get('processed_sections', [])
+            if processed_sections:
+                print(f"\nFound {len(processed_sections)} processed sections:")
+                for section in processed_sections:
+                    section = DepositionSection(**section)
+                    print(f"Section: {section.name}")
+                    print(f"Description: {section.description}")
+                    print("=" * 80)
 
-            if status == "plan_generated":
-                print("\nProposed deposition_summary:")
+            # Always show deposition summary when it exists
+            deposition_summary = values.get("deposition_summary")
+            if deposition_summary and status in ["sections_extracted", "plan_generated"]:
+                print("\nDeposition Summary:")
                 print("=" * 80)
-                deposition_summary = values.get("deposition_summary", "")
-                if not deposition_summary:
-                    raise ValueError("Warning: Expected deposition_summary in state but found none. This may indicate an error.")
                 print(deposition_summary)
                 print("=" * 80)
             
