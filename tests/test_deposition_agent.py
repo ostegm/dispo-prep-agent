@@ -109,16 +109,6 @@ async def resume_after_human_feedback(client: httpx.AsyncClient, thread_id: str,
         print(f"\nUnexpected error resuming workflow: {e}")
         raise
 
-def format_plan(sections: list[dict]) -> str:
-    """Format the sections into a readable plan."""
-    plan = []
-    for i, section in enumerate(sections, 1):
-        plan.append(f"{i}. {section['name']}")
-        plan.append(f"   Description: {section['description']}")
-        plan.append(f"   Content: {section['content']}")
-        plan.append("")
-    return "\n".join(plan)
-
 async def poll_thread_state(client: httpx.AsyncClient, thread_id: str, assistant_id: str) -> Dict[str, Any]:
     """Poll thread state until completion."""
     last_status = None  # Track the last status to detect loops
