@@ -2,7 +2,7 @@ from typing import Annotated, List, Dict, TypedDict, Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 import operator
-
+from langchain_core.messages import AnyMessage
 
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Query for web search.")
@@ -39,6 +39,7 @@ class ReportState(TypedDict, total=False):
     deposition_summary: str  # AI-generated summary of goals and strategy
     feedback_on_plan: str  # Feedback on the report structure from review
     accept_plan: bool  # Whether to accept or reject the report plan
+    deposition_plan_prompt: List[AnyMessage]
     raw_sections: List[str]  # Raw sections before processing
     processed_section: Annotated[List[Dict], operator.add]  # Results from parallel section processing
     markdown_document: str  # markdown report

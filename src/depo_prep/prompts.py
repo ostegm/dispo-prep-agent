@@ -22,7 +22,7 @@ Your outline should focus on how you will:
 
 ## Background
 Below are all the collected documents relevant to the case:
-{complaint_context}
+{document_context}
 
 ## Instructions
 

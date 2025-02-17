@@ -119,6 +119,11 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Finish fixing the cli script - why did it throw this error? `RuntimeError: Task failed with error: InvalidUpdateError('Invalid node name process_single_section in packet'), full task above.`
-- Make human feedback work as intended. It should be a second turn in the same prompt so we dont lose the context of the previous steps.
 - Investigate hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
+- Write a script to run the CLI tool using graph.stream directly: https://github.com/langchain-ai/open_deep_research/blob/main/src/open_deep_research/graph.ipynb
+- Determine if REST API vs graph.invoke is best serving approach. 
+- Run the dodona server localy (comment out some stuff?)
+- Map out how to add a single graph to the dodona backened.
+   - Add a new route in the backend for triggering the grpah
+   - Add a page in the frontend which triggers the graph, allows chat interaction and then shows the Markdown output in the UI (editable)
+   - Export to PDF

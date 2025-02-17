@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Dict, List, TypedDict, Literal
 from langchain_anthropic import ChatAnthropic 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.chat_models import BaseChatModel as ChatModel
@@ -87,11 +87,8 @@ def collect_processed_sections(state: ReportState) -> ReportState:
     logger.info(f"Collected {len(state['processed_section'])} processed sections")
     return state
 
-async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
-    """Generate initial deposition plan."""
-    configurable = Configuration.from_runnable_config(config)
-    
-    # Fetch all documents
+async def get_documents_for_context(configurable: Configuration):
+    """Fetch all documents from the vector database."""
     logger.info("Fetching all documents from the vector database...")
     all_documents = await utils.get_all_documents_text(configurable.chroma_collection_name)
     
@@ -100,26 +97,35 @@ async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -
     for filename, content in all_documents.items():
         context_parts.append(f"### {filename}\n{content}\n")
     all_context = "\n".join(context_parts)
-    
-    # Prepare feedback context if it exists
-    feedback_context = ""
+    return all_context
+
+
+async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -> ReportState:
+    """Generate initial deposition plan."""
+    configurable = Configuration.from_runnable_config(config)
+    # Check if we are rebuilding the plan based on feedback from a previous turn.
     if state.get("feedback_on_plan"):
-        feedback_context = f"Based on previous feedback: {state['feedback_on_plan']}"
-    
-    # Format system instructions
-    system_instructions = prompts.deposition_planner_instructions.format(
-        complaint_context=all_context,
-        topic=state["user_provided_topic"],
-        feedback_context=feedback_context,
-        max_sections=configurable.max_sections,
-        default_num_queries_per_section=configurable.default_num_queries_per_section
-    )
-    
-    # Generate outline
-    messages = [
-        SystemMessage(content=system_instructions),
-        HumanMessage(content="Help me prepare for a depositon based on the provided documents and the topic.")]
-    
+        logger.info("Feedback on plan found, adding feedback to the existing prompt.")
+        existing_prompt_messages = state.get("deposition_plan_prompt", [])
+        existing_prompt_messages.extend([
+            AIMessage(content=state["deposition_summary"]),
+            HumanMessage(content=state["feedback_on_plan"])
+        ])
+        messages = existing_prompt_messages
+    else:
+        # Build the prompt from user input + documents.
+        system_instructions = prompts.deposition_planner_instructions.format(
+            document_context=get_documents_for_context(configurable),
+            topic=state["user_provided_topic"],
+            max_sections=configurable.max_sections,
+            default_num_queries_per_section=configurable.default_num_queries_per_section
+        )
+        
+        messages = [HumanMessage(content=system_instructions)]
+
+    # Store the prompt in the state in case we need to regenerate the plan based on more feedback.
+    state["deposition_plan_prompt"] = messages
+
     response = await planner_model.ainvoke(messages)
     raw_outline = response.content
     
