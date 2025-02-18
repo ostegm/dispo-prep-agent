@@ -131,7 +131,6 @@ def human_feedback(state: ReportState):
     """ No-op node that should be interrupted on """
     logger.info("Entering human feedback node")
     logger.info(f"Current state keys: {state.keys()}")
-    logger.info(f"Full state: {state}")
     
     state["status"] = "awaiting_feedback"
     return state
@@ -178,7 +177,7 @@ async def convert_sections_to_markdown(state: ReportState) -> ReportState:
     ]
     
     # Generate markdown
-    response = writer_model.invoke(messages)
+    response = await writer_model.ainvoke(messages)
 
     # Update state
     state["status"] = "markdown_compiled"

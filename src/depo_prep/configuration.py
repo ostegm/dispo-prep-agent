@@ -11,7 +11,7 @@ class Configuration(BaseModel):
     
     # Model configurations
     planner_model: str = "gemini-2.0-flash-thinking-exp-01-21"
-    writer_model: str = "claude-3-sonnet-20240229"
+    writer_model: str = "claude-3-5-haiku-20241022"
     
     # Planning configurations
     max_sections: int = 3

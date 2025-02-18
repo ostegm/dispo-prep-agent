@@ -11,34 +11,12 @@ from langgraph.types import Command, Interrupt
 from langgraph.checkpoint.memory import MemorySaver
 from src.depo_prep.configuration import Configuration
 from src.depo_prep.graph import builder
+from src.depo_prep.state import DepositionSection
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def handle_human_feedback(plan_text: str) -> bool:
-    """Handle human feedback for the plan.
-    
-    Args:
-        plan_text: The plan text to review
-        
-    Returns:
-        True to accept plan, False to provide feedback
-    """
-    print("\nPlease review the following report plan.")
-    print("=" * 80)
-    print(plan_text)
-    print("=" * 80)
-    
-    while True:
-        response = input("\nPass 'True' to approve the report plan or provide feedback to regenerate the report plan: ").strip()
-        
-        if response.lower() == 'true':
-            return True
-        elif response:
-            return response
-        else:
-            print("Please either enter 'True' or provide feedback")
 
 async def test_deposition_workflow():
     """Run the deposition workflow using direct graph execution."""
@@ -68,10 +46,6 @@ async def test_deposition_workflow():
     thread = {
         "configurable": {
             "thread_id": str(uuid.uuid4()),
-            "search_api": "tavily",
-            "planner_provider": "openai",
-            "max_search_depth": 1,
-            "planner_model": "o3-mini"
         }
     }
     
@@ -81,58 +55,89 @@ async def test_deposition_workflow():
     # Compile the graph with memory
     graph = builder.compile(checkpointer=memory, interrupt_before=['human_feedback'])
     
-    # Create initial input
-    input_data = {
-        "user_provided_topic": deposition_topic,
-    }
-    
     try:
         # Run the graph and handle interrupts
         print("\nStarting graph execution...")
         
-        # Initial run
-        async for event in graph.astream(input_data, thread, stream_mode="updates"):
-            if "__interrupt__" in event:
-                interrupt = event["__interrupt__"]
-                if isinstance(interrupt, (dict, Interrupt)):
-                    value = interrupt.get("value") if isinstance(interrupt, dict) else interrupt.value
-                    if isinstance(value, str):
-                        feedback = await handle_human_feedback(value)
-                        if feedback is True:
-                            # User approved the plan
-                            async for resume_event in graph.astream(Command(resume=True), thread, stream_mode="updates"):
-                                logger.debug(f"Resume event: {resume_event}")
-                        else:
-                            # User provided feedback
-                            async for resume_event in graph.astream(Command(resume=feedback), thread, stream_mode="updates"):
-                                logger.debug(f"Resume event: {resume_event}")
-                        break
+        # Initial input with topic
+        initial_input = {
+            "user_provided_topic": deposition_topic,
+        }
         
-        # Get final state
-        final_state = graph.get_state(thread)
+        # Start the graph execution
+        graph_stream = graph.astream(initial_input, thread, stream_mode="values")
         
-        if final_state and "markdown_document" in final_state.values:
+        # Process events until we need human feedback
+        async for event in graph_stream:
+            if "messages" in event:
+                event["messages"][-1].pretty_print()  
+            # Get current values and status
+            status = event.get("status", "unknown")
+            print(f"\nStatus: {status}")
+                
+            # Show deposition summary when it exists
+            deposition_summary = event.get("deposition_summary")
+            processed_sections = event.get("processed_sections")
+            if deposition_summary and processed_sections:
+                print("\nDeposition Summary:")
+                print("=" * 80)
+                print(deposition_summary)
+                print("=" * 80)
+                
+                # Get user feedback on the plan
+                feedback = input("\nEnter feedback on the plan (press Enter to accept without feedback): ").strip()
+                accept_plan = not feedback  # Accept if no feedback given
+                
+                print(f"\n{'Accepting' if accept_plan else 'Rejecting'} plan{' with feedback' if feedback else ''}...")
+                # Resume execution with feedback
+                graph.update_state(
+                    values={
+                        "feedback_on_plan": feedback or None,
+                        "accept_plan": accept_plan,
+                    },
+                    config=thread,
+                    as_node="human_feedback"
+                )
+                break
+        
+        print("Resuming execution...")
+        resume_command = Command(
+            resume={
+                "feedback_on_plan": feedback or None,
+                "accept_plan": accept_plan
+            }
+        )
+        # Continue streaming until we get the final state
+        final_state = None
+        async for event in graph.astream(resume_command, thread, stream_mode="values"):
+            print(f"Event: {event.keys()}")
+            status = event.get("status", "unknown")
+            print(f"\nStatus: {status}")
+            
+            # Keep track of the latest state
+            if event:
+                final_state = event
+                    
+        if not final_state:
+            raise ValueError("No final state received from graph execution")
+            
+        markdown_doc = final_state.get("markdown_document")
+        if markdown_doc:
             print("\nFinal Report:")
             print("=" * 80)
-            print(final_state.values["markdown_document"])
+            print(markdown_doc)
             print("=" * 80)
             
             # Save report to reports directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             report_file = reports_dir / f"report_{timestamp}.md"
-            report_file.write_text(final_state.values["markdown_document"])
+            report_file.write_text(markdown_doc)
             print(f"\nReport saved to: {report_file}")
-            
-            # Save memory state
-            memory_file = reports_dir / f"memory_{timestamp}.json"
-            memory.save(memory_file)
-            print(f"\nMemory state saved to: {memory_file}")
-        else:
-            print("\nNo final report in results")
-            print("Final state:", final_state)
-            
+            return  # Exit the function when we have the final report
+
+
     except Exception as e:
-        logger.error(f"Error during graph execution: {str(e)}", exc_info=True)
+        logger.error(f"Error during graph execution: {e}")
         raise
 
 if __name__ == "__main__":
