@@ -11,6 +11,7 @@ class DepositionSection(BaseModel):
 
 class ReportStateInput(TypedDict, total=False):
     user_provided_topic: str  # Deposition topic
+    document_context: str  # Document context from vector store
     feedback_on_plan: str  # Feedback on the report structure
     accept_plan: bool  # Whether to accept the report plan
 
@@ -20,6 +21,7 @@ class ReportStateOutput(TypedDict):
 
 class ReportState(TypedDict, total=False):
     user_provided_topic: str  # Original deposition topic from user
+    document_context: str  # Document context from vector store
     deposition_summary: str  # AI-generated summary of goals and strategy
     feedback_on_plan: str  # Feedback on the report structure from review
     accept_plan: bool  # Whether to accept or reject the report plan

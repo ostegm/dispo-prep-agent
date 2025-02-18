@@ -12,6 +12,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.depo_prep.configuration import Configuration
 from src.depo_prep.graph import builder
 from src.depo_prep.state import DepositionSection
+from src.depo_prep import utils
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,14 @@ async def test_deposition_workflow():
     
     print(f"\nProceeding with topic:\n{deposition_topic}")
     
+    # Fetch document context
+    print("\nFetching document context...")
+    all_documents = await utils.get_all_documents_text(config.chroma_collection_name)
+    context_parts = []
+    for filename, content in all_documents.items():
+        context_parts.append(f"### {filename}\n{content}\n")
+    document_context = "\n".join(context_parts)
+    
     # Create thread config
     thread = {
         "configurable": {
@@ -59,9 +68,10 @@ async def test_deposition_workflow():
         # Run the graph and handle interrupts
         print("\nStarting graph execution...")
         
-        # Initial input with topic
+        # Initial input with topic and document context
         initial_input = {
             "user_provided_topic": deposition_topic,
+            "document_context": document_context,
         }
         
         # Start the graph execution
@@ -69,8 +79,6 @@ async def test_deposition_workflow():
         
         # Process events until we need human feedback
         async for event in graph_stream:
-            if "messages" in event:
-                event["messages"][-1].pretty_print()  
             # Get current values and status
             status = event.get("status", "unknown")
             print(f"\nStatus: {status}")

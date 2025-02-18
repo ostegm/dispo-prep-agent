@@ -10,6 +10,7 @@ from datetime import datetime
 
 from src.depo_prep.configuration import Configuration
 from src.depo_prep.state import DepositionSection
+from src.depo_prep import utils
 
 LANGGRAPH_API_URL = "http://localhost:2024"
 
@@ -224,9 +225,18 @@ async def test_deposition_workflow():
     
     print(f"\nProceeding with topic:\n{deposition_topic}")
     
+    # Fetch document context
+    print("\nFetching document context...")
+    all_documents = await utils.get_all_documents_text(config.chroma_collection_name)
+    context_parts = []
+    for filename, content in all_documents.items():
+        context_parts.append(f"### {filename}\n{content}\n")
+    document_context = "\n".join(context_parts)
+    
     # Create input state
     input_state = {
         "user_provided_topic": deposition_topic,
+        "document_context": document_context,
         "feedback_on_plan": None,
         "accept_plan": False
     }

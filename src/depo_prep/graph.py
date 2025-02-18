@@ -91,7 +91,7 @@ async def generate_deposition_plan(state: ReportState, config: RunnableConfig) -
     else:
         # Build the prompt from user input + documents.
         system_instructions = prompts.deposition_planner_instructions.format(
-            document_context=await get_documents_for_context(configurable),
+            document_context=state["document_context"],
             topic=state["user_provided_topic"],
             max_sections=configurable.max_sections,
             default_num_queries_per_section=configurable.default_num_queries_per_section
