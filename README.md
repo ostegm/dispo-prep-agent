@@ -119,7 +119,7 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Investigate hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
+- Investigate deploying on langgraph cloud hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
 - Run the dodona server localy (comment out some stuff?)
 - Map out how to add a single graph to the dodona backened.
    - Add a new route in the backend for triggering the grpah

@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 import chromadb
 from chromadb.config import Settings
 from openai import AsyncOpenAI
@@ -148,4 +148,111 @@ async def get_all_documents_text(chroma_collection_name: str) -> Dict[str, str]:
         
     except Exception as e:
         logger.error(f"Error retrieving documents: {str(e)}")
+        raise
+
+async def initialize_graph_input(deposition_topic: str) -> Dict[str, str]:
+    """
+    Initialize the input for the graph execution with topic and document context.
+    
+    Args:
+        deposition_topic: The topic for the deposition preparation
+        
+    Returns:
+        Dict containing the initial input for the graph
+    """
+    # Fetch document context
+    all_documents = await get_all_documents_text(config.chroma_collection_name)
+    context_parts = []
+    for filename, content in all_documents.items():
+        context_parts.append(f"### {filename}\n{content}\n")
+    document_context = "\n".join(context_parts)
+    
+    return {
+        "user_provided_topic": deposition_topic,
+        "document_context": document_context,
+    }
+
+def save_deposition_report(markdown_doc: str, reports_dir: str) -> str:
+    """
+    Save the deposition report to a file.
+    
+    Args:
+        markdown_doc: The markdown content to save
+        reports_dir: Directory to save the report in
+        
+    Returns:
+        str: Path to the saved report file
+    """
+    from datetime import datetime
+    from pathlib import Path
+    
+    # Create reports directory if it doesn't exist
+    reports_path = Path(reports_dir)
+    reports_path.mkdir(exist_ok=True)
+    
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_file = reports_path / f"report_{timestamp}.md"
+    
+    # Save the report
+    report_file.write_text(markdown_doc)
+    return str(report_file)
+
+async def run_deposition_workflow(graph, initial_input: Dict[str, Any], thread: Dict[str, Any]) -> Optional[str]:
+    """
+    Run the deposition workflow graph with automatic plan acceptance.
+    
+    Args:
+        graph: The compiled workflow graph
+        initial_input: Initial input for the graph
+        thread: Thread configuration
+        
+    Returns:
+        Optional[str]: The final markdown document if successful
+    """
+    from langgraph.types import Command
+    
+    try:
+        # Start the graph execution
+        graph_stream = graph.astream(initial_input, thread, stream_mode="values")
+        
+        # Process until we need human feedback
+        async for event in graph_stream:
+            status = event.get("status", "unknown")
+            logger.info(f"Status: {status}")
+            
+            if event.get("deposition_summary") and event.get("processed_sections"):
+                # Automatically accept the plan without feedback
+                graph.update_state(
+                    values={
+                        "feedback_on_plan": None,
+                        "accept_plan": True,
+                    },
+                    config=thread,
+                    as_node="human_feedback"
+                )
+                break
+        
+        # Resume execution
+        resume_command = Command(
+            resume={
+                "feedback_on_plan": None,
+                "accept_plan": True
+            }
+        )
+        
+        # Continue streaming until we get the final state
+        final_state = None
+        async for event in graph.astream(resume_command, thread, stream_mode="values"):
+            logger.info(f"Status: {event.get('status', 'unknown')}")
+            if event:
+                final_state = event
+        
+        if not final_state:
+            raise ValueError("No final state received from graph execution")
+        
+        return final_state.get("markdown_document")
+        
+    except Exception as e:
+        logger.error(f"Error during graph execution: {e}")
         raise
