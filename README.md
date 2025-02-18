@@ -119,9 +119,6 @@ python -m tests.test_deposition_agent
 ```
 
 ## Next Steps
-- Investigate deploying on langgraph cloud hosting options ([self host](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted) in docker)
-- Run the dodona server localy (comment out some stuff?)
-- Map out how to add a single graph to the dodona backened.
-   - Add a new route in the backend for triggering the grpah
-   - Add a page in the frontend which triggers the graph, allows chat interaction and then shows the Markdown output in the UI (editable)
-   - Export to PDF
+- Add a page in the frontend which triggers the graph, allows chat interaction and then shows the Markdown output in the UI (editable)
+- Export to PDF
+- Allow for user to chat with the document at the end of the workflow to propose further edits?
