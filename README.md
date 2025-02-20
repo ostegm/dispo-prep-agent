@@ -3,7 +3,6 @@
 Depo Prep Agent is an agent that helps prepare for legal depositions by analyzing case documents and generating comprehensive deposition outlines. It combines document analysis, semantic search, and structured writing with human oversight.
 
 Key features:
-- Semantic search of case documents using Chroma vector database
 - Human review and iteration of deposition plans
 - Parallel processing of search queries
 - Well-formatted markdown deposition outlines
@@ -78,21 +77,14 @@ python -m tests.test_deposition_agent
 ## 📖 How it Works
 
 1. **Document Processing**
-   - PDFs are converted to images and OCR'd using Gemini
-   - Text is split into semantic chunks (250-1000 words)
-   - Chunks are embedded and stored in Chroma
+   - User provides a deposition topic and relevant case documents
 
 2. **Deposition Planning**
    - Gemini analyzes the topic and generates structured sections
-   - Each section includes targeted search queries
+   - Each section includes relevant quotes from the case documents
    - Human review/feedback loop available
 
-3. **Document Research**
-   - System runs parallel semantic searches for each query
-   - Results are structured and organized by section
-   - Relevant document chunks are retrieved
-
-4. **Content Generation**
+3. **Content Generation**
    - Claude compiles search results into a structured report
    - Gemini generates specific deposition questions
    - Final output combines document insights with expert questioning
@@ -117,8 +109,3 @@ python -m tests.test_chroma_index
 # Test full workflow
 python -m tests.test_deposition_agent
 ```
-
-## Next Steps
-- Add a page in the frontend which triggers the graph, allows chat interaction and then shows the Markdown output in the UI (editable)
-- Export to PDF
-- Allow for user to chat with the document at the end of the workflow to propose further edits?
